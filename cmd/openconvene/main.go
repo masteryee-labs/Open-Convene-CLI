@@ -240,6 +240,10 @@ func resolveTask(cmd *cobra.Command, args []string) string {
 // enterREPL loads the config and starts the interactive REPL.
 // Called when `openconvene`, `openconvene ask`, or `openconvene agent` is
 // run without a task argument.
+//
+// If no config file is found, a default config is auto-generated using
+// dynamic model names (CLI:模型名 format) so the user can start immediately
+// without running `openconvene init` first.
 func enterREPL(cmd *cobra.Command, initialMode string) error {
 	// Resolve config path: --config > env > default.
 	configPath, _ := cmd.Flags().GetString("config")
@@ -249,7 +253,14 @@ func enterREPL(cmd *cobra.Command, initialMode string) error {
 
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		// No config found — auto-generate a default one with dynamic models.
+		// This lets the user start using the REPL immediately.
+		fmt.Fprintf(os.Stderr, "No models.yaml found. Auto-generating default config with dynamic models...\n\n")
+		cfg, configPath, err = autoGenerateConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to auto-generate config: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Config written to: %s\n\n", configPath)
 	}
 
 	// Apply CLI flag overrides for initial responders/executor/synthesizer.
@@ -277,6 +288,53 @@ func enterREPL(cmd *cobra.Command, initialMode string) error {
 	return runREPL(initialMode, cfg, configPath)
 }
 
+// autoGenerateConfig creates a default models.yaml with dynamic model names
+// and returns the loaded config + path. This is called when no config exists
+// and the user tries to enter the REPL.
+func autoGenerateConfig(explicitPath string) (*config.ConveneConfig, string, error) {
+	// Determine where to write the config.
+	path := explicitPath
+	if path == "" {
+		// Use the default search path: ~/.config/openconvene/models.yaml
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return nil, "", err
+		}
+		path = filepath.Join(home, ".config", "openconvene", "models.yaml")
+	}
+
+	// Create the directory if needed.
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, "", err
+	}
+
+	// Write a minimal config with dynamic model names.
+	defaultContent := `# OpenConveneCLI — auto-generated default config
+# Uses dynamic model names (CLI:模型名 format). No models section needed.
+# Edit responders/executor/synthesizer to customize your MoA setup.
+
+defaults:
+  timeout: 120
+  responders:
+    - devin:glm-5.2
+    - devin:swe-1.7
+    - devin:kimi-k2.7
+  executor: devin:glm-5.2
+  synthesizer: devin:glm-5.2
+`
+	if err := os.WriteFile(path, []byte(defaultContent), 0644); err != nil {
+		return nil, "", err
+	}
+
+	// Load and return the config we just wrote.
+	cfg, err := config.LoadConfig(path)
+	if err != nil {
+		return nil, "", err
+	}
+	return cfg, path, nil
+}
+
 // parseCSV splits a comma-separated string into a trimmed slice.
 func parseCSV(s string) []string {
 	var result []string
@@ -300,10 +358,16 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 		configPath = os.Getenv("OPENCONVENE_CLI_CONFIG")
 	}
 
-	// --- 1. Load config ---
+	// --- 1. Load config (auto-generate if missing) ---
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
-		return fmt.Errorf("failed to load config: %w", err)
+		// Auto-generate a default config so the user can start immediately.
+		fmt.Fprintf(os.Stderr, "No models.yaml found. Auto-generating default config...\n\n")
+		cfg, configPath, err = autoGenerateConfig(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to auto-generate config: %w", err)
+		}
+		fmt.Fprintf(os.Stderr, "Config written to: %s\n\n", configPath)
 	}
 
 	// --- 2. Merge CLI params with config defaults (CLI takes priority) ---

@@ -41,10 +41,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/chzyer/readline"
 	"github.com/masteryee-labs/open-convene-cli/internal/adapter"
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 	"github.com/masteryee-labs/open-convene-cli/internal/convene"
@@ -134,17 +136,38 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 	// Print welcome banner.
 	printWelcome(session)
 
-	scanner := bufio.NewScanner(os.Stdin)
-	// Increase buffer size for long prompts.
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	// Check if stdin is a terminal. If not (e.g. piped input in tests),
+	// use the basic fallback reader instead of readline.
+	if !isTerminal(os.Stdin) {
+		return runREPLBasic(session)
+	}
+
+	// Set up readline with history, tab completion, and a nice prompt.
+	rl, err := readline.NewEx(&readline.Config{
+		Prompt:                 session.prompt(),
+		HistoryFile:            historyFilePath(),
+		HistoryLimit:           500,
+		AutoComplete:           &slashCompleter{},
+		InterruptPrompt:        "^C",
+		EOFPrompt:              "exit",
+		HistorySearchFold:      true,
+		UniqueEditLine:         true,
+	})
+	if err != nil {
+		// Fallback to basic line reading if readline fails.
+		fmt.Fprintf(os.Stderr, "Warning: readline init failed (%v), using basic input\n", err)
+		return runREPLBasic(session)
+	}
+	defer rl.Close()
 
 	for {
-		fmt.Print(session.prompt())
-		if !scanner.Scan() {
-			break // EOF (Ctrl+D)
+		rl.SetPrompt(session.prompt())
+		line, err := rl.Readline()
+		if err != nil {
+			break // EOF (Ctrl+D) or interrupt
 		}
 
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -165,6 +188,117 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 	fmt.Println()
 	printSessionSummary(session)
 	return nil
+}
+
+// isTerminal returns true if the given file is a terminal (not a pipe or file).
+func isTerminal(f *os.File) bool {
+	// On Windows, check if the file descriptor is a character device.
+	if f == nil {
+		return false
+	}
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	// Character devices (terminals) have ModeCharDevice set.
+	// Pipes and regular files do not.
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+// runREPLBasic is a fallback when readline is unavailable or stdin is not a
+// terminal (e.g. piped input in tests). It uses bufio.Scanner for simple
+// line-by-line reading without history or tab completion.
+func runREPLBasic(session *replSession) error {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	for {
+		fmt.Print(session.prompt())
+		if !scanner.Scan() {
+			break // EOF (Ctrl+D)
+		}
+
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "/") {
+			if shouldExit := handleSlashCommand(session, line); shouldExit {
+				break
+			}
+			continue
+		}
+		runPromptInREPL(session, line)
+	}
+
+	fmt.Println()
+	printSessionSummary(session)
+	return nil
+}
+
+// historyFilePath returns the path to the readline history file.
+func historyFilePath() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ".openconvene_history"
+	}
+	return filepath.Join(home, ".openconvene_history")
+}
+
+// ---------------------------------------------------------------------------
+// Slash command tab completion
+// ---------------------------------------------------------------------------
+
+// slashCompleter implements readline.AutoCompleter for / commands.
+type slashCompleter struct{}
+
+// Complete returns completions for the given input line.
+func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
+	// Only complete when the line starts with "/".
+	if len(line) == 0 || line[0] != '/' {
+		return nil, 0
+	}
+
+	// Get the partial command being typed.
+	partial := string(line[:pos])
+
+	// All slash commands and aliases.
+	commands := []string{
+		"/help", "/h", "/?",
+		"/models", "/m",
+		"/detect", "/d",
+		"/mode",
+		"/responders",
+		"/executor",
+		"/synthesizer",
+		"/usage", "/u",
+		"/status",
+		"/config", "/c", "/settings",
+		"/compact",
+		"/clear", "/new",
+		"/resume", "/continue",
+		"/update",
+		"/exit", "/quit", "/q",
+	}
+
+	var matches []string
+	for _, cmd := range commands {
+		if strings.HasPrefix(cmd, partial) {
+			matches = append(matches, cmd)
+		}
+	}
+
+	// Convert matches to [][]rune for readline.
+	newLine = make([][]rune, len(matches))
+	for i, m := range matches {
+		// readline expects the completion to be the part AFTER the common prefix.
+		// length is the number of characters from the cursor that should be replaced.
+		newLine[i] = []rune(m)
+	}
+	length = pos
+
+	return newLine, length
 }
 
 // prompt returns the REPL prompt string with mode indicator.

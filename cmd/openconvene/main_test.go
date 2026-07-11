@@ -204,17 +204,18 @@ func TestCLIRunInvalidMode(t *testing.T) {
 }
 
 func TestCLIRunNoConfig(t *testing.T) {
-	// Point to a nonexistent config → error.
-	_, err := captureStderr(t, func() error {
-		return execRootCmd([]string{
-			"run",
-			"--mode", "research",
-			"--task", "test",
-			"--config", filepath.Join(t.TempDir(), "nonexistent.yaml"),
-		})
-	})
+	// Test that autoGenerateConfig creates a valid config file.
+	configPath := filepath.Join(t.TempDir(), "nonexistent.yaml")
+	cfg, path, err := autoGenerateConfig(configPath)
+	require.NoError(t, err)
+	assert.Equal(t, configPath, path)
+	assert.NotNil(t, cfg)
+	assert.NotEmpty(t, cfg.Defaults.Responders)
+	assert.NotEmpty(t, cfg.Defaults.Executor)
 
-	assert.Error(t, err, "missing config should produce an error")
+	// The config file should exist on disk.
+	_, statErr := os.Stat(configPath)
+	assert.NoError(t, statErr, "auto-generated config file should exist")
 }
 
 func TestCLIRunEmptyTask(t *testing.T) {
@@ -602,11 +603,12 @@ func TestCLINoArgsShowsHelp(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestCLIUnknownCommand(t *testing.T) {
+	// An unknown flag should produce an error (cobra rejects unknown flags).
 	_, err := captureStderr(t, func() error {
-		return execRootCmd([]string{"nonexistent-command"})
+		return execRootCmd([]string{"--nonexistent-flag"})
 	})
 
-	assert.Error(t, err, "unknown command should produce an error")
+	assert.Error(t, err, "unknown flag should produce an error")
 }
 
 // ---------------------------------------------------------------------------
@@ -1038,9 +1040,9 @@ func TestREPLHelpListsNewCommands(t *testing.T) {
 		[]string{"--config", configPath}, "/help\n/exit\n")
 
 	require.NoError(t, err)
-	// New commands should appear in help.
+	// Commands should appear in help (note: /model was removed, /executor replaces it).
 	assert.Contains(t, output, "/status")
-	assert.Contains(t, output, "/model")
+	assert.Contains(t, output, "/executor")
 	assert.Contains(t, output, "/new")
 	assert.Contains(t, output, "/compact")
 	assert.Contains(t, output, "/settings")
