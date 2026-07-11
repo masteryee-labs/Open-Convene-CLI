@@ -1,2 +1,8 @@
 openconvene.exe
 *.exe
+
+# Agent Harness Deploy (AHD) — personal dev environment config, not part of the project
+.agent/
+.agents/
+.codex/
+.devin/
