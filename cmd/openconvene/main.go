@@ -127,6 +127,8 @@ func addConveneFlags(cmd *cobra.Command) {
 	cmd.Flags().StringP("model", "m", "", "Model name (alias for --executor; overrides config default)")
 	// --json: output result as JSON (aligned with Grok --output-format json).
 	cmd.Flags().Bool("json", false, "Output result as JSON (for scripting/automation)")
+	// --language: override output language for model responses.
+	cmd.Flags().String("language", "", "Output language for model responses (e.g. zh-TW, 繁體中文, English)")
 	// Hidden --task flag for backward compatibility with the old `run` command.
 	// New usage prefers positional args: openconvene "task"
 	cmd.Flags().String("task", "", "Task description (positional arg preferred; use '-' for stdin)")
@@ -284,6 +286,10 @@ func enterREPL(cmd *cobra.Command, initialMode string) error {
 	if flagTimeout > 0 {
 		cfg.Defaults.Timeout = flagTimeout
 	}
+	flagLanguage, _ := cmd.Flags().GetString("language")
+	if flagLanguage != "" {
+		cfg.Defaults.Language = flagLanguage
+	}
 
 	return runREPL(initialMode, cfg, configPath)
 }
@@ -313,6 +319,7 @@ func autoGenerateConfig(explicitPath string) (*config.ConveneConfig, string, err
 	defaultContent := `# OpenConveneCLI — auto-generated default config
 # Uses dynamic model names (CLI:模型名 format). No models section needed.
 # Edit responders/executor/synthesizer to customize your MoA setup.
+# Set language to control model output language (e.g. zh-TW, 繁體中文, English).
 
 defaults:
   timeout: 120
@@ -322,6 +329,7 @@ defaults:
     - devin:kimi-k2.7
   executor: devin:glm-5.2
   synthesizer: devin:glm-5.2
+  # language: zh-TW  # uncomment to set output language
 `
 	if err := os.WriteFile(path, []byte(defaultContent), 0644); err != nil {
 		return nil, "", err
@@ -414,6 +422,12 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 	flagTimeout, _ := cmd.Flags().GetInt("timeout")
 	if flagTimeout > 0 {
 		cfg.Defaults.Timeout = flagTimeout
+	}
+
+	// 2e. Language override: flag overrides config defaults.
+	flagLanguage, _ := cmd.Flags().GetString("language")
+	if flagLanguage != "" {
+		cfg.Defaults.Language = flagLanguage
 	}
 
 	// --- 3. Resolve task (positional arg, --task flag, or stdin) ---

@@ -51,6 +51,7 @@ import (
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 	"github.com/masteryee-labs/open-convene-cli/internal/convene"
 	"github.com/masteryee-labs/open-convene-cli/internal/mode"
+	"gopkg.in/yaml.v3"
 )
 
 // ---------------------------------------------------------------------------
@@ -65,11 +66,14 @@ type replSession struct {
 	currentMode string
 
 	// Current model overrides (empty = use config defaults).
-	responders   []string
-	executor      string
-	synthesizer   string
-	configPath    string
+	responders    []string
+	executor       string
+	synthesizer    string
+	configPath     string
 	defaultTimeout int
+
+	// Language for model responses (empty = no preference).
+	language string
 
 	// Usage tracking.
 	usage *sessionUsage
@@ -127,6 +131,7 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 		executor:       cfg.Defaults.Executor,
 		configPath:     configPath,
 		defaultTimeout: cfg.Defaults.Timeout,
+		language:       cfg.Defaults.Language,
 		usage:          newSessionUsage(),
 	}
 	if cfg.Defaults.Synthesizer != nil {
@@ -272,6 +277,7 @@ func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int)
 		"/responders",
 		"/executor",
 		"/synthesizer",
+		"/language", "/lang",
 		"/usage", "/u",
 		"/status",
 		"/config", "/c", "/settings",
@@ -317,16 +323,22 @@ func printWelcome(s *replSession) {
 		modeDisplay = "ask"
 	}
 
+	langDisplay := s.language
+	if langDisplay == "" {
+		langDisplay = "(default)"
+	}
+
 	fmt.Printf(`
 ╔══════════════════════════════════════════════════════════╗
 ║                  OpenConveneCLI REPL                     ║
 ║          Mixture-of-Agents Interactive Mode              ║
 ╚══════════════════════════════════════════════════════════╝
 
-  Mode:       %s
-  Responders: %s
-  Executor:   %s
+  Mode:        %s
+  Responders:  %s
+  Executor:    %s
   Synthesizer: %s
+  Language:    %s
 
   Type a prompt to run it, or /help for commands.
   /exit to quit.
@@ -334,7 +346,8 @@ func printWelcome(s *replSession) {
 `, modeDisplay,
 		strings.Join(s.responders, ", "),
 		orDash(s.executor),
-		orDash(s.synthesizer))
+		orDash(s.synthesizer),
+		langDisplay)
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +386,9 @@ func handleSlashCommand(s *replSession, line string) bool {
 
 	case "/synthesizer":
 		handleSynthesizerCommand(s, args)
+
+	case "/language", "/lang":
+		handleLanguageCommand(s, args)
 
 	case "/usage", "/u":
 		printUsage(s)
@@ -430,6 +446,8 @@ Mode & model:
   /responders [a,b,c]     Show or set responders (comma-separated)
   /executor [name]        Show or set executor
   /synthesizer [name]     Show or set synthesizer ("none" to clear)
+  /language [lang]        Show or set output language (e.g. zh-TW, 繁體中文, English)
+  /lang [lang]            Alias for /language ("none" to clear)
 
 Session & config:
   /usage, /u              Show session usage statistics (per-CLI calls)
@@ -534,6 +552,47 @@ func handleSynthesizerCommand(s *replSession, args []string) {
 	fmt.Printf("Synthesizer set to: %s\n", s.synthesizer)
 }
 
+// handleLanguageCommand handles /language [lang] — show or set the output language.
+// Examples: /language zh-TW, /language 繁體中文, /language en, /language none
+func handleLanguageCommand(s *replSession, args []string) {
+	if len(args) == 0 {
+		if s.language == "" {
+			fmt.Println("Current language: (none — model defaults)")
+		} else {
+			fmt.Printf("Current language: %s\n", s.language)
+		}
+		fmt.Println("  Usage: /language <lang>  (e.g. zh-TW, 繁體中文, English, 日本語)")
+		fmt.Println("         /language none    (clear language preference)")
+		return
+	}
+
+	lang := strings.TrimSpace(strings.Join(args, " "))
+	if lang == "none" || lang == "" {
+		s.language = ""
+		s.cfg.Defaults.Language = ""
+		fmt.Println("Language cleared — models will use their default language.")
+		// Persist the cleared language to config.
+		if s.configPath != "" {
+			if err := saveLanguageToConfig(s.configPath, ""); err != nil {
+				fmt.Fprintf(os.Stderr, "  (warning: could not save language to config: %v)\n", err)
+			}
+		}
+		return
+	}
+
+	s.language = lang
+	s.cfg.Defaults.Language = lang
+	fmt.Printf("Language set to: %s\n", lang)
+	fmt.Println("  (Model responses will be in this language. CLI commands remain in English.)")
+
+	// Persist to config file so it survives across sessions.
+	if s.configPath != "" {
+		if err := saveLanguageToConfig(s.configPath, lang); err != nil {
+			fmt.Fprintf(os.Stderr, "  (warning: could not save language to config: %v)\n", err)
+		}
+	}
+}
+
 // printStatus shows a concise session status (like Codex's /status).
 func printStatus(s *replSession) {
 	modeDisplay := s.currentMode
@@ -541,11 +600,17 @@ func printStatus(s *replSession) {
 		modeDisplay = "ask"
 	}
 
+	langDisplay := s.language
+	if langDisplay == "" {
+		langDisplay = "(default)"
+	}
+
 	fmt.Println("=== Session Status ===")
 	fmt.Printf("  Mode:          %s\n", modeDisplay)
 	fmt.Printf("  Model (exec):  %s\n", orDash(s.executor))
 	fmt.Printf("  Responders:    %s\n", strings.Join(s.responders, ", "))
 	fmt.Printf("  Synthesizer:   %s\n", orDash(s.synthesizer))
+	fmt.Printf("  Language:      %s\n", langDisplay)
 	fmt.Printf("  Runs:          %d\n", s.usage.totalRuns)
 	fmt.Printf("  Session time:  %s\n", time.Since(s.usage.sessionStart).Round(time.Second))
 }
@@ -643,12 +708,18 @@ func printConfigSummary(s *replSession) {
 		modeDisplay = "ask"
 	}
 
+	langDisplay := s.language
+	if langDisplay == "" {
+		langDisplay = "(default)"
+	}
+
 	fmt.Println("=== Current Configuration ===")
 	fmt.Printf("  Config file:  %s\n", orDash(s.configPath))
 	fmt.Printf("  Mode:         %s\n", modeDisplay)
 	fmt.Printf("  Responders:   %s\n", strings.Join(s.responders, ", "))
 	fmt.Printf("  Executor:     %s\n", orDash(s.executor))
 	fmt.Printf("  Synthesizer:  %s\n", orDash(s.synthesizer))
+	fmt.Printf("  Language:     %s\n", langDisplay)
 	fmt.Printf("  Timeout:      %ds\n", s.defaultTimeout)
 	fmt.Printf("  Models count: %d\n", len(s.cfg.Models))
 }
@@ -881,6 +952,94 @@ func orDash(s string) string {
 		return "—"
 	}
 	return s
+}
+
+// saveLanguageToConfig updates the language field in the config file on disk.
+// It reads the existing YAML, updates the defaults.language field, and writes
+// it back. This preserves all other config settings.
+//
+// If the config file doesn't have a defaults section or language field, it
+// adds one. If the file can't be parsed as YAML, it falls back to a simple
+// text replacement.
+func saveLanguageToConfig(configPath, language string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return err
+	}
+
+	content := string(data)
+
+	// Parse as YAML, update, and write back.
+	// We use a simple approach: parse into a map, update the language field,
+	// and marshal back. This preserves structure better than text replacement.
+	var cfg map[string]interface{}
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		// Can't parse as YAML — fall back to text replacement.
+		return saveLanguageByTextReplace(configPath, content, language)
+	}
+
+	defaults, ok := cfg["defaults"].(map[string]interface{})
+	if !ok {
+		defaults = make(map[string]interface{})
+		cfg["defaults"] = defaults
+	}
+
+	if language == "" {
+		delete(defaults, "language")
+	} else {
+		defaults["language"] = language
+	}
+
+	out, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(configPath, out, 0644)
+}
+
+// saveLanguageByTextReplace is a fallback when YAML parsing fails.
+// It does a simple text replacement of the language line.
+func saveLanguageByTextReplace(configPath, content, language string) error {
+	lines := strings.Split(content, "\n")
+	found := false
+	inDefaults := false
+
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "defaults:" {
+			inDefaults = true
+			continue
+		}
+		if inDefaults && strings.HasPrefix(trimmed, "language:") {
+			if language == "" {
+				// Remove the line.
+				lines = append(lines[:i], lines[i+1:]...)
+			} else {
+				lines[i] = fmt.Sprintf("  language: %s", language)
+			}
+			found = true
+			break
+		}
+		// Exit defaults section if we hit a non-indented line.
+		if inDefaults && len(line) > 0 && line[0] != ' ' && line[0] != '\t' && line[0] != '#' {
+			inDefaults = false
+		}
+	}
+
+	if !found && language != "" {
+		// Add language field after "defaults:" line.
+		for i, line := range lines {
+			if strings.TrimSpace(line) == "defaults:" {
+				// Insert after the defaults: line.
+				newLine := fmt.Sprintf("  language: %s", language)
+				lines = append(lines[:i+1], append([]string{newLine}, lines[i+1:]...)...)
+				break
+			}
+		}
+	}
+
+	return os.WriteFile(configPath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
 // stringToPtr returns a pointer to s, or nil if s is empty.

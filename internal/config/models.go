@@ -68,6 +68,13 @@ type DefaultsConfig struct {
 	// Synthesizer is the default synthesizer model name.
 	// nil (null in YAML) means the executor doubles as synthesizer.
 	Synthesizer *string `yaml:"synthesizer"`
+
+	// Language is the preferred output language for model responses.
+	// Empty = no preference (model defaults to English or follows the task language).
+	// Examples: "zh-TW", "繁體中文", "English", "日本語".
+	// This only affects model output language — CLI UI (slash commands, help
+	// text, error messages) remains in English.
+	Language string `yaml:"language"`
 }
 
 // ConveneConfig is the top-level configuration for OpenConveneCLI.

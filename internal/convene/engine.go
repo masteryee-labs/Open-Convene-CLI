@@ -61,6 +61,12 @@ type ConveneEngine struct {
 	// Config is the parsed ConveneConfig (models + defaults).
 	Config *config.ConveneConfig
 
+	// Language is the preferred output language for model responses.
+	// Empty = no preference. When set, a language directive is prepended
+	// to the task so all models (responders, synthesizer, executor) respond
+	// in the specified language. CLI UI is NOT affected.
+	Language string
+
 	// adapterFactory creates Adapter instances. Defaults to adapter.GetAdapter.
 	// S6 tests replace this with a mock factory via SetAdapterFactory().
 	adapterFactory AdapterFactory
@@ -71,10 +77,12 @@ type ConveneEngine struct {
 // ---------------------------------------------------------------------------
 
 // NewConveneEngine creates a ConveneEngine with the given config and the
-// default adapter factory (adapter.GetAdapter).
+// default adapter factory (adapter.GetAdapter). It reads the Language setting
+// from cfg.Defaults.Language.
 func NewConveneEngine(cfg *config.ConveneConfig) *ConveneEngine {
 	return &ConveneEngine{
 		Config:         cfg,
+		Language:       cfg.Defaults.Language,
 		adapterFactory: adapter.GetAdapter,
 	}
 }
@@ -141,6 +149,13 @@ func (e *ConveneEngine) Run(
 ) (ConveneResult, error) {
 
 	overallStart := time.Now()
+
+	// If a language is set, prepend a language directive to the task so all
+	// models (responders, synthesizer, executor) respond in that language.
+	// This only affects model output — CLI UI stays in English.
+	if e.Language != "" {
+		task = fmt.Sprintf("[Please respond in %s.]\n\n%s", e.Language, task)
+	}
 
 	// Step 0: Initialize metadata map + nil synthesis/execution.
 	metadata := make(map[string]interface{})
