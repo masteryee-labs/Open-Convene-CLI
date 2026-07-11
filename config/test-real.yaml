@@ -1,0 +1,46 @@
+# ============================================================
+# OpenConveneCLI — Real Test Config
+# 裁判模型 (synthesizer): devin CLI with glm-5.2
+# 回答模型 (responders): glm-5.2, swe-1.7, kimi-k2.7 (all via devin CLI)
+#
+# 使用 {prompt_file} 佔位符：adapter 自動將 prompt 寫入臨時檔案，
+# 再透過 devin CLI 的 --prompt-file flag 傳入。
+# 這避免了多行/特殊字元 prompt 的 shell 引號問題。
+# ============================================================
+
+defaults:
+  timeout: 120
+  responders:
+    - glm-5.2
+    - swe-1.7
+    - kimi-k2.7
+  executor: glm-5.2
+  synthesizer: glm-5.2      # 裁判模型 = glm-5.2（與其中一個 responder 相同，測試匿名化）
+
+models:
+  # --- 回答模型 A: glm-5.2 (via devin CLI) ---
+  glm-5.2:
+    command: 'devin --model glm-5.2 --print --prompt-file {prompt_file}'
+    execute_command: 'devin --model glm-5.2 --permission-mode dangerous --prompt-file {prompt_file}'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- 回答模型 B: swe-1.7 (via devin CLI) ---
+  swe-1.7:
+    command: 'devin --model swe-1.7 --print --prompt-file {prompt_file}'
+    execute_command: 'devin --model swe-1.7 --permission-mode dangerous --prompt-file {prompt_file}'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- 回答模型 C: kimi-k2.7 (via devin CLI) ---
+  kimi-k2.7:
+    command: 'devin --model kimi-k2.7 --print --prompt-file {prompt_file}'
+    execute_command: 'devin --model kimi-k2.7 --permission-mode dangerous --prompt-file {prompt_file}'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []

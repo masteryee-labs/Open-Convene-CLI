@@ -1,0 +1,56 @@
+# ============================================================
+# OpenConveneCLI — Real Test Config (Multi-CLI)
+# 裁判模型 (synthesizer): devin CLI with glm-5.2
+# 回答模型 (responders): codex (gpt-5.5), grok (grok-4.5), agy (gemini-3.5-flash-high)
+# ============================================================
+
+defaults:
+  timeout: 120
+  responders:
+    - codex-gpt55
+    - grok-45
+    - agy-gemini35flash
+  executor: devin-glm52
+  synthesizer: devin-glm52
+
+models:
+  # --- 裁判模型: devin CLI with glm-5.2 ---
+  # 用 {prompt_file} 支援多行 synthesis prompt
+  devin-glm52:
+    command: 'devin --model glm-5.2 --print --prompt-file {prompt_file}'
+    execute_command: 'devin --model glm-5.2 --permission-mode dangerous --prompt-file {prompt_file}'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- 回答模型 A: codex (gpt-5.5, ChatGPT account) ---
+  # codex exec 從 stdin 讀取，用 type 將 prompt_file 內容 pipe 進去
+  # 注意：RunCommand 在 Windows 已用 cmd /c 包裝，不需要再加內層 cmd /c
+  codex-gpt55:
+    command: 'type {prompt_file} | codex exec --sandbox read-only --skip-git-repo-check'
+    execute_command: 'type {prompt_file} | codex exec --sandbox workspace-write --skip-git-repo-check'
+    read_only: "true"
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- 回答模型 B: grok (grok-4.5) ---
+  # grok 支援 --prompt-file
+  grok-45:
+    command: 'grok --model grok-4.5 --prompt-file {prompt_file}'
+    execute_command: 'grok --model grok-4.5 --always-approve --prompt-file {prompt_file}'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- 回答模型 C: agy (gemini-3.5-flash-high) ---
+  # agy 不支援 --prompt-file 或 stdin，用 inline {prompt}
+  agy-gemini35flash:
+    command: 'agy --model gemini-3.5-flash-high --print "{prompt}"'
+    execute_command: 'agy --model gemini-3.5-flash-high --dangerously-skip-permissions --print "{prompt}"'
+    read_only: "maybe"
+    timeout: 120
+    executor_capable: true
+    extra_args: []

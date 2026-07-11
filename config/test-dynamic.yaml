@@ -1,0 +1,26 @@
+# ============================================================
+# OpenConveneCLI — Dynamic Model Config (no models section needed)
+#
+# 所有模型都用動態名稱格式 "CLI:模型名"，不需要在 models 區段定義。
+# 系統內建每個 CLI 的標準命令模板，自動生成完整命令。
+#
+# 動態名稱格式：CLI名稱:模型名稱
+#   例如：agy:Gemini 3.5 Flash (High)
+#         devin:glm-5.2
+#         grok:grok-4.5
+#         codex:gpt-5.5
+#
+# 分隔符用 ":" 而非 "-"，因為模型名常含連字號（如 glm-5.2），
+# 用 "-" 會造成解析歧義；":" 不會出現在 CLI 名稱或模型名稱中。
+# ============================================================
+
+defaults:
+  timeout: 120
+  responders:
+    - devin:glm-5.2
+    - devin:swe-1.7
+    - devin:kimi-k2.7
+  executor: devin:glm-5.2
+  synthesizer: devin:glm-5.2
+
+# 不需要 models 區段 — 所有模型都由內建模板動態生成

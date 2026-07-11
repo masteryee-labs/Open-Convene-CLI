@@ -1,0 +1,102 @@
+# ============================================================
+# OpenConveneCLI — Model Configuration
+# Path: ~/.config/openconvene/models.yaml  (or ./config/models.yaml)
+# Generate with: openconvene init
+#
+# Command templates are based on official CLI documentation research.
+# read_only values marked "maybe" await empirical verification (S2).
+# ============================================================
+
+defaults:
+  timeout: 120
+  responders:
+    - agy
+    - grok
+  executor: codex
+  synthesizer: null              # null = executor doubles as synthesizer
+
+models:
+  # --- Antigravity (AGY) ---
+  agy:
+    command: 'agy -p "{prompt}"'
+    execute_command: 'agy -p "{prompt}"'
+    read_only: "maybe"           # Antigravity CLI; awaiting S2 verification
+    timeout: 120
+    executor_capable: true
+    extra_args: []
+
+  # --- Codex ---
+  # respond vs execute use different sandbox flags
+  codex:
+    command: 'codex exec --sandbox read-only "{prompt}"'
+    execute_command: 'codex exec --sandbox workspace-write "{prompt}"'
+    read_only: "true"            # --sandbox read-only enforces read-only
+    timeout: 180
+    executor_capable: true
+    extra_args: []
+
+  # --- Devin ---
+  devin:
+    command: 'devin -p "{prompt}"'
+    execute_command: 'devin --permission-mode dangerous "{prompt}"'  # S2 實測：bypass 非有效值，有效值為 auto/accept-edits/smart/dangerous
+    read_only: "maybe"           # -p is non-interactive but inherently agentic
+    timeout: 300
+    executor_capable: true
+    extra_args: []
+
+  # --- Grok ---
+  grok:
+    command: 'grok -p "{prompt}"'
+    execute_command: 'grok -p "{prompt}"'
+    read_only: "maybe"           # awaiting S2 verification
+    timeout: 180
+    executor_capable: true
+    extra_args: []
+
+  # --- Cursor ---
+  cursor:
+    command: 'cursor agent -p "{prompt}"'
+    execute_command: 'cursor agent -p --force "{prompt}"'
+    read_only: "true"            # read-only without --force
+    timeout: 180
+    executor_capable: true
+    extra_args: []
+
+  # --- Kimi Code ---
+  kimi:
+    command: 'kimi -p "{prompt}"'
+    execute_command: 'kimi -p "{prompt}"'
+    read_only: "true"            # read-only ops auto-approved
+    timeout: 180
+    executor_capable: true
+    extra_args: []
+
+  # --- Hermes ---
+  hermes:
+    command: 'hermes chat -q "{prompt}"'
+    execute_command: 'hermes chat -q "{prompt}"'
+    read_only: "maybe"           # awaiting S2 verification
+    timeout: 180
+    executor_capable: true
+    extra_args: []
+
+  # --- Aider ---
+  # Not suitable as a responder (empty command); read_only=false by default.
+  # User must set an API key env var (e.g. ANTHROPIC_API_KEY) and may adjust
+  # the --model value (e.g. sonnet) to taste.
+  aider:
+    command: ''                  # aider is a code editor, not a responder
+    execute_command: 'aider --yes --model sonnet "{prompt}"'
+    read_only: "false"           # modifies files by default
+    timeout: 300
+    executor_capable: true
+    extra_args: []
+
+  # --- OpenCode ---
+  opencode:
+    command: 'opencode run "{prompt}"'
+    execute_command: 'opencode run "{prompt}"'
+    read_only: "maybe"           # awaiting S2 verification
+    timeout: 180
+    executor_capable: true
+    extra_args: []
