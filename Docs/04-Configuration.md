@@ -34,6 +34,9 @@ defaults:
   executor: "codex"                 # string — 預設 executor 模型名
   synthesizer: null                 # *string — 預設 synthesizer 模型名
                                     #   null = executor 兼任 synthesizer
+  language: ""                      # string — 模型回應語言（空 = 不指定）
+                                    #   例: "zh-TW", "繁體中文", "English"
+                                    #   只影響模型輸出，CLI UI 保持英文
 
 # --- 模型配置（map: name → ModelConfig）---
 models:
@@ -62,6 +65,7 @@ models:
 | `defaults.responders` | `DefaultsConfig.Responders` | `[]string` | `responders` | 否 |
 | `defaults.executor` | `DefaultsConfig.Executor` | `string` | `executor` | 否 |
 | `defaults.synthesizer` | `DefaultsConfig.Synthesizer` | `*string` | `synthesizer` | 否（nil = 兼任） |
+| `defaults.language` | `DefaultsConfig.Language` | `string` | `language` | 否（空 = 不指定） |
 | `models.<name>`（map key） | `ModelConfig.Name` | `string` | `-`（不解析） | ★由 factory 填入 |
 | `models.<name>.command` | `ModelConfig.Command` | `string` | `command` | ★是（必須含 {prompt}） |
 | `models.<name>.execute_command` | `ModelConfig.ExecuteCommand` | `string` | `execute_command` | 否（空 = 用 command） |
@@ -90,6 +94,7 @@ defaults:
   responders: ["agy", "grok"]
   executor: "codex"
   synthesizer: null              # null = executor 兼任 synthesizer
+  # language: "zh-TW"            # 取消註解以設定模型回應語言
 
 models:
   # --- Antigravity (AGY) ---
@@ -250,4 +255,33 @@ openconvene init --path ~/.config/openconvene/models.yaml
 ```
 
 > `GenerateExampleConfig` 回傳上 §3 範例的完整 YAML 字串。
-> `config/models.yaml.example` 是版控中的範本；`config/models.yaml` 是使用者的實際 config（通常 .gitignore）。
+
+---
+
+## 7. 語言設定（`defaults.language`）
+
+`defaults.language` 控制模型輸出語言。設定後，引擎在每次 task 前注入 `[Please respond in <lang>.]` 指令，所有 responders、synthesizer、executor 都會以該語言回應。
+
+### 設定方式
+
+| 方式 | 範例 | 持久化 |
+|------|------|--------|
+| config 檔 | `language: "zh-TW"` | ✓ 寫在 models.yaml |
+| CLI flag | `--language zh-TW` | ✗ 僅當次 |
+| REPL 命令 | `/language zh-TW` | ✓ 寫回 models.yaml |
+
+### 範例值
+
+| 值 | 效果 |
+|----|------|
+| `""`（空） | 不指定（模型用預設語言） |
+| `"zh-TW"` | 繁體中文 |
+| `"繁體中文"` | 繁體中文（完整名稱也接受） |
+| `"English"` | 英文 |
+| `"日本語"` | 日文 |
+
+### 注意事項
+
+- **只影響模型輸出** — CLI 介面（slash 命令、help text、error messages）保持英文
+- **REPL 持久化** — `/language` 命令會即時寫回 config 檔，跨 session 保留
+- **flag 覆寫** — `--language` flag 優先於 config 預設值，但不寫回 config

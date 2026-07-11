@@ -102,6 +102,8 @@ Missing (install to use):
 
 > 偵測結果用來決定 `models.yaml` 要設定哪些模型。你只需配置已安裝的 CLI。
 
+> **捷徑**：如果你只想快速開始，可以跳過步驟 2-5，直接執行 `openconvene` 或 `openconvene ask`。若系統中沒有 `models.yaml`，CLI 會自動生成一份預設 config（使用 `devin:glm-5.2`、`devin:swe-1.7`、`devin:kimi-k2.7` 三個動態模型名），寫到 `~/.config/openconvene/models.yaml`，然後直接進入 REPL。
+
 ### 步驟 2：產生範例 config
 
 ```bash
@@ -191,6 +193,8 @@ openconvene agent     # enters REPL in agent mode
 In the REPL, you can:
 1. Type any text → it runs as a prompt through the Convene pipeline in the current mode
 2. Use slash commands (starting with `/`) to inspect state, switch modes, change models, and view usage
+3. Press **Up/Down arrows** to browse command history (persists across sessions)
+4. Press **Tab** after typing `/` to auto-complete slash commands
 
 ```
 openconvene(code)> fix the bug in main.go     # direct prompt
@@ -198,6 +202,7 @@ openconvene(code)> /mode ask                  # switch to ask mode
 openconvene(ask)> /responders agy:Gemini 3.5 Flash (High),grok:grok-4.5  # 動態模型名
 openconvene(ask)> /executor devin:glm-5.2     # 切換 executor（可用動態模型名）
 openconvene(ask)> /synthesizer grok:grok-4.5  # 切換 synthesizer
+openconvene(ask)> /language zh-TW             # 設定模型回應語言為繁體中文
 openconvene(ask)> /usage                      # view per-CLI usage stats
 openconvene(ask)> /status                     # 查看當前 session 狀態
 openconvene(ask)> /new                        # 清除 session 重新開始
@@ -207,6 +212,30 @@ openconvene(ask)> /config                     # show current config
 openconvene(ask)> /help                       # show all commands
 openconvene(ask)> /exit                       # exit REPL
 ```
+
+> **REPL 特色**：
+> - **上下鍵歷史** — 命令歷史儲存到 `~/.openconvene_history`，跨 session 保留
+> - **Tab 補全** — 輸入 `/` 後按 Tab 顯示所有匹配的 slash 命令
+> - **自動生成 config** — 若沒有 `models.yaml`，第一次啟動 REPL 時自動生成預設 config（使用 `devin:glm-5.2` 等動態模型名），無需先跑 `openconvene init`
+
+### 語言設定
+
+`/language` 命令（或 `--language` flag）控制**模型輸出語言**，不影響 CLI 介面（slash 命令、help、error messages 保持英文）。
+
+```
+# 在 REPL 中設定
+openconvene(ask)> /language zh-TW          # 設定為繁體中文
+openconvene(ask)> /language 繁體中文        # 也接受完整語言名稱
+openconvene(ask)> /language English        # 切換回英文
+openconvene(ask)> /language none           # 清除（使用模型預設語言）
+openconvene(ask)> /lang                    # 查看當前語言
+
+# 或用 CLI flag（單輪模式）
+openconvene ask "what is CRDT?" --language zh-TW
+openconvene agent "deploy the app" --language 繁體中文
+```
+
+設定後語言會**持久化到 `models.yaml`**，跨 session 保留。引擎會在 task 前注入 `[Please respond in <lang>.]` 指令，所有 responders、synthesizer、executor 都會以該語言回應。
 
 ### Slash Commands
 
@@ -219,6 +248,7 @@ openconvene(ask)> /exit                       # exit REPL
 | `/responders [a,b,c]` | | Show or set responders（可用動態模型名） | OpenConvene unique |
 | `/executor [name]` | | Show or set executor（可用動態模型名） | OpenConvene unique |
 | `/synthesizer [name]` | | Show or set synthesizer (`none` to clear；可用動態模型名) | OpenConvene unique |
+| `/language [lang]` | `/lang` | Show or set output language（如 `zh-TW`、`繁體中文`、`English`；`none` 清除） | OpenConvene unique |
 | `/usage` | `/u` | Show session usage statistics (per-CLI calls) | agy |
 | `/config` | `/c`, `/settings` | Show current configuration summary | agy |
 | `/detect` | `/d` | Detect installed CLIs | OpenConvene unique |
@@ -238,6 +268,7 @@ openconvene(ask)> /exit                       # exit REPL
 | `--responders <a,b,c>` | Specify responders | OpenConvene unique |
 | `--executor <name>` | Specify executor | OpenConvene unique |
 | `--synthesizer <name>` | Specify synthesizer | OpenConvene unique |
+| `--language <lang>` | Output language for model responses (e.g. `zh-TW`, `繁體中文`) | OpenConvene unique |
 | `--config <path>` | Specify config path | OpenConvene unique |
 | `--timeout <sec>` | Override timeout | OpenConvene unique |
 | `--verbose` | Show raw responses and metadata | OpenConvene unique |
@@ -261,6 +292,7 @@ You can pass CLI flags when entering the REPL to override config defaults:
 openconvene ask --responders agy,grok,codex    # start REPL with custom responders
 openconvene agent --executor devin             # start REPL with custom executor
 openconvene --config /path/to/models.yaml      # start REPL with custom config
+openconvene --language zh-TW                   # start REPL with Chinese output
 ```
 
 These overrides apply as the initial state of the REPL session. You can still change them with slash commands inside the REPL.
@@ -283,6 +315,7 @@ These overrides apply as the initial state of the REPL session. You can still ch
 | `--responders` | string | ✗ | config defaults | 逗號分隔的 responder 模型名（覆蓋 config） |
 | `--executor` | string | ✗ | config defaults | executor 模型名（code/agent 模式必填） |
 | `--synthesizer` | string | ✗ | config defaults | synthesizer 模型名（空 = executor 兼任） |
+| `--language` | string | ✗ | config defaults | 模型回應語言（如 `zh-TW`、`繁體中文`、`English`；空 = 不指定） |
 | `--config` | string | ✗ | 搜尋預設路徑 | `models.yaml` 路徑 |
 | `--timeout` | int | ✗ | config defaults | 覆蓋每次呼叫 timeout（秒，>0 生效） |
 | `--verbose` | bool | ✗ | false | 顯示各 responder 原始回應 + metadata 到 stderr |
@@ -296,6 +329,7 @@ openconvene ask "<task description or - for stdin>" \
   --responders <name1,name2,...> \
   --executor <name> \
   --synthesizer <name> \
+  --language <lang> \
   --config <path> \
   --timeout <seconds> \
   --verbose \
@@ -307,6 +341,7 @@ openconvene "<task description or - for stdin>" \
   --responders <name1,name2,...> \
   --executor <name> \
   --synthesizer <name> \
+  --language <lang> \
   --config <path> \
   --timeout <seconds> \
   --verbose \
@@ -318,6 +353,7 @@ openconvene agent "<task description or - for stdin>" \
   --responders <name1,name2,...> \
   --executor <name> \
   --synthesizer <name> \
+  --language <lang> \
   --config <path> \
   --timeout <seconds> \
   --verbose \

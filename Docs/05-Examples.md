@@ -504,3 +504,68 @@ models:
 - 同一個 CLI（devin）可以透過 `--model` flag 指定不同模型，在 config 中建立多個 entry
 - 匿名化確保 synthesizer 不會因為「看到自己的名字」而偏心
 - 這讓「單 CLI 多模型」的 MoA 設定成為可行的使用模式
+
+---
+
+## 範例 14：設定模型回應語言
+
+### 場景
+
+你想讓所有模型（responders、synthesizer、executor）以繁體中文回應，但 CLI 介面（slash 命令、help）保持英文。
+
+### 方式一：CLI flag（單次使用）
+
+```bash
+openconvene ask "what is CRDT and how does it work?" --language zh-TW
+```
+
+### 方式二：REPL 中設定（持久化）
+
+```
+$ openconvene
+openconvene(code)> /language zh-TW
+Language set to: zh-TW
+  (Model responses will be in this language. CLI commands remain in English.)
+
+openconvene(code)> what is CRDT and how does it work?
+# → 模型會以繁體中文回應
+
+openconvene(code)> /status
+=== Session Status ===
+  Mode:          code
+  Model (exec):  devin:glm-5.2
+  Responders:    devin:glm-5.2, devin:swe-1.7, devin:kimi-k2.7
+  Synthesizer:   devin:glm-5.2
+  Language:      zh-TW
+  Runs:          1
+  Session time:  12s
+```
+
+### 方式三：config 檔設定（持久化）
+
+```yaml
+# ~/.config/openconvene/models.yaml
+defaults:
+  timeout: 120
+  responders:
+    - devin:glm-5.2
+    - devin:swe-1.7
+    - devin:kimi-k2.7
+  executor: devin:glm-5.2
+  synthesizer: devin:glm-5.2
+  language: "zh-TW"              # 模型回應語言
+```
+
+### 清除語言設定
+
+```
+openconvene(code)> /language none
+Language cleared — models will use their default language.
+```
+
+### 說明
+
+- `/language` 命令設定後即時寫回 `models.yaml`，跨 session 保留
+- `--language` flag 只影響當次執行，不寫回 config
+- 引擎在 task 前注入 `[Please respond in zh-TW.]` 指令
+- 接受的值：`zh-TW`、`繁體中文`、`English`、`日本語` 等任意字串
