@@ -46,11 +46,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chzyer/readline"
 	"github.com/masteryee-labs/open-convene-cli/internal/adapter"
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 	"github.com/masteryee-labs/open-convene-cli/internal/convene"
 	"github.com/masteryee-labs/open-convene-cli/internal/mode"
+	"github.com/reeflective/readline"
+	"github.com/reeflective/readline/inputrc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -141,35 +142,45 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 	// Print welcome banner.
 	printWelcome(session)
 
-	// Check if stdin is a terminal. If not (e.g. piped input in tests),
-	// use the basic fallback reader instead of readline.
-	if !isTerminal(os.Stdin) {
+	// Check if stdin AND stdout are both terminals. If either is not
+	// (e.g. piped input/output in tests), use the basic fallback reader.
+	// reeflective/readline requires both to be interactive terminals;
+	// it blocks indefinitely if stdin is a terminal but stdout is piped.
+	if !isTerminal(os.Stdin) || !isTerminal(os.Stdout) {
 		return runREPLBasic(session)
 	}
 
-	// Set up readline with history, tab completion, and a nice prompt.
-	rl, err := readline.NewEx(&readline.Config{
-		Prompt:                 session.prompt(),
-		HistoryFile:            historyFilePath(),
-		HistoryLimit:           500,
-		AutoComplete:           &slashCompleter{session: session},
-		InterruptPrompt:        "^C",
-		EOFPrompt:              "exit",
-		HistorySearchFold:      true,
-		UniqueEditLine:         true,
+	// Set up reeflective/readline shell with menu-complete (fish-style) Tab behavior.
+	// Tab is rebound from "complete" (bash-style) to "menu-complete" (fish-style):
+	// pressing Tab shows a completion menu, and up/down arrows navigate candidates.
+	rl := readline.NewShell()
+
+	// Bind Tab to menu-complete in emacs mode (the default).
+	rl.Config.Binds["emacs"][inputrc.Unescape(`\C-i`)] = inputrc.Bind{Action: "menu-complete"}
+	// Shift-Tab cycles backward through completions.
+	rl.Config.Binds["emacs"][inputrc.Unescape(`\e[Z`)] = inputrc.Bind{Action: "menu-complete-backward"}
+
+	// Set up the prompt (dynamic — re-evaluated each loop iteration).
+	rl.Prompt.Primary(func() string {
+		return session.prompt()
 	})
-	if err != nil {
-		// Fallback to basic line reading if readline fails.
-		fmt.Fprintf(os.Stderr, "Warning: readline init failed (%v), using basic input\n", err)
-		return runREPLBasic(session)
+
+	// Set up file-based history.
+	histFile := historyFilePath()
+	if hist, err := readline.NewHistoryFromFile(histFile); err == nil {
+		rl.History.Add("file", hist)
 	}
-	defer rl.Close()
+
+	// Set up the completer (session-aware, two-phase slash command + argument completion).
+	completer := &slashCompleter{session: session}
+	rl.Completer = func(line []rune, cursor int) readline.Completions {
+		return completer.completeReeflective(line, cursor)
+	}
 
 	for {
-		rl.SetPrompt(session.prompt())
 		line, err := rl.Readline()
 		if err != nil {
-			break // EOF (Ctrl+D) or interrupt
+			break // EOF (Ctrl+D) or interrupt (Ctrl+C)
 		}
 
 		line = strings.TrimSpace(line)
@@ -255,7 +266,7 @@ func historyFilePath() string {
 // Slash command tab completion
 // ---------------------------------------------------------------------------
 
-// slashCompleter implements readline.AutoCompleter for / commands.
+// slashCompleter is a session-aware completer for slash commands.
 // It supports two-phase completion:
 //   - Phase 1: completing the command name (e.g. /ex → /executor, /exit)
 //   - Phase 2: completing arguments after the command (e.g. /executor d → devin, devin:glm-5.2)
@@ -364,27 +375,29 @@ func modeValues() []string {
 	return []string{"ask", "code", "agent"}
 }
 
-// Do implements readline.AutoCompleter. It returns completions for the given
-// input line at position pos.
+// completeReeflective is the completion function for reeflective/readline.
+// It returns readline.Completions (a struct with candidates) instead of [][]rune.
 //
 // Behavior:
+//   - Only completes when the line starts with "/".
 //   - No space in input: complete command names (e.g. /ex → /executor, /exit)
 //   - Space after command: complete arguments based on the command type
 //   - Partial argument text: filter completions by prefix match
-func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
+func (c *slashCompleter) completeReeflective(line []rune, cursor int) readline.Completions {
 	// Only complete when the line starts with "/".
 	if len(line) == 0 || line[0] != '/' {
-		return nil, 0
+		return readline.Completions{}
 	}
 
-	input := string(line[:pos])
+	// Get the partial input up to the cursor.
+	input := string(line[:cursor])
 
 	// Find the first space — it separates command from arguments.
 	spaceIdx := strings.Index(input, " ")
 
 	if spaceIdx == -1 {
 		// Phase 1: completing the command name itself (no space typed yet).
-		return c.completeCommand(input)
+		return c.completeCommandReeflective(input)
 	}
 
 	// Phase 2: completing arguments after the command.
@@ -393,31 +406,26 @@ func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int)
 
 	// Check if this command supports argument completion.
 	if !commandsWithArgs[cmd] {
-		return nil, 0
+		return readline.Completions{}
 	}
 
-	return c.completeArgs(cmd, argPartial)
+	return c.completeArgsReeflective(cmd, argPartial)
 }
 
-// completeCommand returns completions for a partial slash command (no space yet).
-func (c *slashCompleter) completeCommand(partial string) ([][]rune, int) {
+// completeCommandReeflective returns completions for a partial slash command.
+func (c *slashCompleter) completeCommandReeflective(partial string) readline.Completions {
 	var matches []string
 	for _, cmd := range allSlashCommands() {
 		if strings.HasPrefix(cmd, partial) {
 			matches = append(matches, cmd)
 		}
 	}
-
-	result := make([][]rune, len(matches))
-	for i, m := range matches {
-		result[i] = []rune(m)
-	}
-	return result, len(partial)
+	sort.Strings(matches)
+	return readline.CompleteValues(matches...)
 }
 
-// completeArgs returns completions for arguments of a specific slash command.
-// argPartial is the text after the space (may be empty for "show all options").
-func (c *slashCompleter) completeArgs(cmd, argPartial string) ([][]rune, int) {
+// completeArgsReeflective returns completions for arguments of a specific slash command.
+func (c *slashCompleter) completeArgsReeflective(cmd, argPartial string) readline.Completions {
 	var candidates []string
 
 	switch cmd {
@@ -429,7 +437,6 @@ func (c *slashCompleter) completeArgs(cmd, argPartial string) ([][]rune, int) {
 
 	case "/synthesizer":
 		candidates = c.modelNamesForCompletion()
-		// "none" is a special value to clear the synthesizer.
 		candidates = append(candidates, "none")
 
 	case "/responders":
@@ -444,22 +451,17 @@ func (c *slashCompleter) completeArgs(cmd, argPartial string) ([][]rune, int) {
 		var matches []string
 		for _, m := range allModels {
 			if strings.HasPrefix(m, segment) {
-				matches = append(matches, m)
+				matches = append(matches, prefix+m)
 			}
 		}
-
-		// Build full completions: prefix + matched model name.
-		result := make([][]rune, len(matches))
-		for i, m := range matches {
-			result[i] = []rune(prefix + m)
-		}
-		return result, len(argPartial)
+		sort.Strings(matches)
+		return readline.CompleteValues(matches...).NoSpace(',')
 
 	case "/language", "/lang":
 		candidates = commonLanguages()
 
 	default:
-		return nil, 0
+		return readline.Completions{}
 	}
 
 	// Filter candidates by prefix match against argPartial.
@@ -469,15 +471,8 @@ func (c *slashCompleter) completeArgs(cmd, argPartial string) ([][]rune, int) {
 			matches = append(matches, cand)
 		}
 	}
-
-	// Sort for consistent display order.
 	sort.Strings(matches)
-
-	result := make([][]rune, len(matches))
-	for i, m := range matches {
-		result[i] = []rune(m)
-	}
-	return result, len(argPartial)
+	return readline.CompleteValues(matches...)
 }
 
 // prompt returns the REPL prompt string with mode indicator.
