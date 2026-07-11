@@ -1,143 +1,237 @@
+<div align="center">
+
 # OpenConveneCLI
 
-**OpenConveneCLI** 是一支獨立的 Go 命令列工具，實現「多模型協作」：將同一個問題同時派發給 N 個 responder 模型（各自透過其原生 CLI 以 read-only 模式回答），由 synthesizer 整合 N 份回應成一份結論，再交由 executor 根據整合結果執行（寫碼、改檔、或長時間 agent 任務）。
+### Multi-Model AI Collaboration CLI Tool — Orchestrate N AI Coding Agents via Native CLIs
+
+[![Go Version](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux%20%7C%20macOS-blue)](#build-from-source)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/masteryee-labs/open-convene-cli/pulls)
+
+**English** | [繁體中文](README.zh-TW.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja.md) | [한국어](README.ko.md) | [Español](README.es.md) | [Français](README.fr.md) | [Deutsch](README.de.md)
+
+</div>
+
+---
+
+## Overview
+
+**OpenConveneCLI** is an open-source Go command-line tool that implements **multi-model AI collaboration** — dispatching the same prompt simultaneously to N responder models (each via its native CLI in read-only mode), synthesizing their responses into a unified conclusion, then delegating to an executor model that acts on the synthesized result (writing code, modifying files, or running long-horizon agent tasks).
+
+This approach aligns with [Mixture-of-Agents (MoA)](https://arxiv.org/abs/2406.04692) and [OpenRouter Fusion](https://openrouter.ai/), but introduces a key innovation: **CLI-as-Model** — instead of requiring a unified API, it orchestrates each model's native CLI (Devin, Grok, Codex, Antigravity, Cursor, Kimi, Hermes, Aider, OpenCode). Even if a model lacks a public API, as long as it has a CLI, it can participate in the collaboration.
+
+> **Keywords**: AI CLI orchestration, multi-model collaboration, Mixture-of-Agents, MoA, AI code generation, multi-agent system, CLI-as-Model, AI coding agent, LLM orchestration, fan-out AI
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [How It Works](#how-it-works)
+- [Supported AI CLIs](#supported-ai-clis)
+- [Commands](#commands)
+- [Interactive REPL](#interactive-repl)
+- [CLI Flags](#cli-flags)
+- [Why Go](#why-go)
+- [Documentation](#documentation)
+- [Build from Source](#build-from-source)
+- [License](#license)
+
+---
 
 ## Quick Start
 
 ```bash
-# 1. 安裝
+# 1. Install
 go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
 
-# 2. 偵測系統已安裝的 9 個 CLI adapter
+# 2. Detect installed AI CLIs
 openconvene detect
 
-# 3. 產生 config
+# 3. Generate config
 openconvene init --path ~/.config/openconvene/models.yaml
 
-# 4. 執行多模型協作
-openconvene ask "你的問題" --responders agy,grok
+# 4. Run multi-model collaboration
+openconvene ask "your question" --responders agy,grok
 
-# 5. 寫碼（預設 code mode）
+# 5. Write code (default code mode)
 openconvene "fix the bug in foo.go"
 
-# 6. agent 任務
+# 6. Agent task
 openconvene agent "deploy the app"
 ```
 
-> responders 可用任何已安裝的 CLI：agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode（至少裝 1 個）。
+> Responders can use any installed CLI: agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode (at least 1 required).
 
-## What it does
+---
 
-OpenConveneCLI 提供三種模式，對應開發者真實需求：
+## How It Works
 
-| 模式 | 指令 | 流程 | 執行？ | 典型用途 |
-|------|------|------|--------|---------|
-| `ask` | `openconvene ask "..."` | N responder → synthesizer → 印出結論 | ✗ 不執行 | 技術調研、方案比較 |
-| `code` | `openconvene "..."` (預設) | N responder → synthesizer（可選）→ executor 寫碼 | ✓ 寫碼 | 實作功能、修 bug |
-| `agent` | `openconvene agent "..."` | N responder → synthesizer → executor agent | ✓ agent | 複雜多步任務 |
+OpenConveneCLI provides three modes matching real developer workflows:
 
-核心概念對齊 [Mixture-of-Agents (MoA)](https://arxiv.org/abs/2406.04692) 與 OpenRouter Fusion，但創新之處在於**CLI-as-Model**——不依賴統一 API，而是編排各模型的原生 CLI（Devin、Grok、Codex、agy、Cursor、Kimi、Hermes、Aider、OpenCode），即使某模型沒有公開 API，只要有 CLI 就能參與協作。
+| Mode | Command | Pipeline | Executes? | Typical Use Case |
+|------|---------|----------|-----------|-----------------|
+| `ask` | `openconvene ask "..."` | N responders → synthesizer → print conclusion | No | Technical research, solution comparison |
+| `code` (default) | `openconvene "..."` | N responders → synthesizer (optional) → executor writes code | Yes — writes code | Implement features, fix bugs |
+| `agent` | `openconvene agent "..."` | N responders → synthesizer → executor agent | Yes — agent mode | Complex multi-step tasks |
+
+```
+                    ┌──────────┐
+                    │  Prompt  │
+                    └────┬─────┘
+                         │ fan-out
+            ┌────────────┼────────────┐
+            ▼            ▼            ▼
+       ┌────────┐  ┌────────┐  ┌────────┐
+       │Responder│  │Responder│  │Responder│
+       │  (agy) │  │ (grok) │  │ (codex)│
+       └───┬────┘  └───┬────┘  └───┬────┘
+           │           │           │
+           └───────────┼───────────┘
+                       ▼
+                ┌─────────────┐
+                │ Synthesizer │
+                └──────┬──────┘
+                       ▼
+                ┌──────────┐
+                │ Executor │
+                └──────────┘
+```
+
+---
+
+## Supported AI CLIs
+
+OpenConveneCLI supports 9 AI coding-agent CLIs out of the box:
+
+| CLI | Read-Only | Executor | Install Command |
+|-----|-----------|----------|-----------------|
+| [Devin](https://devin.ai) | Yes | Yes | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
+| [Grok](https://x.ai) | Yes | Yes | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
+| [Codex](https://github.com/openai/codex) | Yes | Yes | `npm install -g @openai/codex` |
+| [Antigravity (agy)](https://antigravity.google) | Yes | Yes | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+| [Cursor](https://cursor.com) | Yes | No | `curl https://cursor.com/install -fsS \| bash` |
+| [Kimi Code](https://code.kimi.com) | Yes | Yes | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| [Hermes](https://github.com/hashicorp/hermes) | Yes | Yes | `hermes setup --portal` |
+| [Aider](https://aider.chat) | Yes | Yes | `python -m pip install aider-install && aider-install` |
+| [OpenCode](https://opencode.ai) | Yes | Yes | See [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+
+> Each CLI connects to its own model backend. OpenConveneCLI itself does not depend on any cloud service.
+
+---
 
 ## Commands
 
+```bash
+# Single-shot (with task argument)
+openconvene "task"              # default code mode (writes code)
+openconvene ask "task"          # ask mode (research, no execution)
+openconvene agent "task"        # agent mode (agentic actions)
+
+# Interactive mode (no task argument → enters REPL)
+openconvene                     # interactive REPL (default code mode)
+openconvene ask                 # interactive REPL (ask mode)
+openconvene agent               # interactive REPL (agent mode)
+
+# Utility commands
+openconvene models              # list configured models
+openconvene detect              # detect installed AI CLIs
+openconvene init                # generate starter models.yaml
+openconvene check               # validate models.yaml
 ```
-# 單次執行（帶 task 參數）
-openconvene "task"              # 預設 code mode（寫碼）
-openconvene ask "task"          # ask mode（研究，不執行）
-openconvene agent "task"        # agent mode（廣義 agentic 動作）
 
-# 互動模式（不帶 task，進入 REPL）
-openconvene                     # 進入互動 REPL（預設 code mode）
-openconvene ask                 # 進入互動 REPL（ask mode）
-openconvene agent               # 進入互動 REPL（agent mode）
-
-# 輔助指令
-openconvene models              # 列出已設定的模型
-openconvene detect              # 偵測系統已安裝的 CLI
-openconvene init                # 生成 starter models.yaml
-openconvene check               # 驗證 models.yaml
-```
-
-進階 flags：`--responders`、`--executor`/`--model`/`-m`、`--synthesizer`、`--config`、`--timeout`、`--verbose`、`--json`、`-p`
+---
 
 ## Interactive REPL
 
-不帶 task 參數執行 `openconvene`、`openconvene ask` 或 `openconvene agent` 時，會進入互動式 REPL，類似 codex、grok、agy、devin 的互動模式。
+Running `openconvene`, `openconvene ask`, or `openconvene agent` without a task argument enters an interactive REPL, similar to codex, grok, agy, and devin.
 
-在 REPL 中可以直接輸入提示詞執行，或使用 slash 指令切換設定（對齊 Devin/Codex/agy/Grok 慣例）：
+In the REPL, you can type prompts directly or use slash commands to switch settings:
 
 ```
-openconvene(code)> fix the bug in main.go     # 直接下提示詞
-openconvene(code)> /mode ask                  # 切換到 ask 模式
-openconvene(ask)> /executor devin             # 切換 executor 模型
-openconvene(ask)> /responders agy,grok,codex  # 切換 responders
-openconvene(ask)> /synthesizer grok           # 切換 synthesizer
-openconvene(ask)> /language zh-TW             # 設定模型回應語言
-openconvene(ask)> /status                     # 查看當前 session 狀態
-openconvene(ask)> /usage                      # 查看本次 session 各 CLI 使用量
-openconvene(ask)> /models                     # 列出已設定的模型
-openconvene(ask)> /detect                     # 偵測已安裝的 CLI
-openconvene(ask)> /config                     # 顯示當前設定
-openconvene(ask)> /new                        # 清除 session 重新開始
-openconvene(ask)> /help                       # 顯示所有指令
-openconvene(ask)> /exit                       # 離開 REPL
+openconvene(code)> fix the bug in main.go     # direct prompt
+openconvene(code)> /mode ask                  # switch to ask mode
+openconvene(ask)> /executor devin             # switch executor model
+openconvene(ask)> /responders agy,grok,codex  # switch responders
+openconvene(ask)> /synthesizer grok           # switch synthesizer
+openconvene(ask)> /language zh-TW             # set model response language
+openconvene(ask)> /status                     # view session status
+openconvene(ask)> /usage                      # view per-CLI usage stats
+openconvene(ask)> /models                     # list configured models
+openconvene(ask)> /detect                     # detect installed CLIs
+openconvene(ask)> /config                     # show current config
+openconvene(ask)> /new                        # clear session
+openconvene(ask)> /help                       # show all commands
+openconvene(ask)> /exit                       # exit REPL
 ```
 
-> **REPL 特色**：fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋（Ctrl-R）、命令歷史跨 session 保留。使用 [`reeflective/readline`](https://github.com/reeflective/readline) v1.1.4 引擎。
+> **REPL Features**: fish-style menu-complete (Tab shows completion menu, Up/Down arrows navigate candidates, Enter confirms, Shift-Tab cycles backward), incremental history search (Ctrl-R/Ctrl-S), cross-session command history. Powered by [`reeflective/readline`](https://github.com/reeflective/readline) v1.1.4.
 
-### Slash 指令一覽
+### Slash Commands
 
-| 指令 | 簡寫/別名 | 說明 | 對齊 |
-|------|----------|------|------|
-| `/help` | `/h`, `/?` | 顯示所有可用指令 | Devin, Codex, agy |
-| `/status` | | 顯示 session 狀態（模式、模型、執行數） | Codex |
-| `/mode [ask\|code\|agent]` | | 顯示或切換當前模式 | Devin, Codex |
-| `/models` | `/m` | 列出已設定的模型 | OpenConvene 獨有 |
-| `/responders [a,b,c]` | | 顯示或設定 responders | OpenConvene 獨有 |
-| `/executor [name]` | | 顯示或設定 executor | OpenConvene 獨有 |
-| `/synthesizer [name]` | | 顯示或設定 synthesizer | OpenConvene 獨有 |
-| `/language [lang]` | `/lang` | 顯示或設定模型回應語言 | OpenConvene 獨有 |
-| `/usage` | `/u` | 顯示各 CLI 使用量統計 | agy |
-| `/config` | `/c`, `/settings` | 顯示當前設定摘要 | agy |
-| `/detect` | `/d` | 偵測已安裝的 CLI | OpenConvene 獨有 |
-| `/clear` | `/new` | 清除螢幕並重置 session | Devin, Codex |
-| `/compact` | | (stub) 壓縮對話以釋放 token | Devin, Codex |
-| `/resume` | `/continue` | (stub) 恢復之前的 session | Devin, agy |
-| `/update` | | (stub) 檢查並安裝更新 | Devin |
-| `/exit` | `/quit`, `/q` | 離開 REPL | Devin, agy |
+| Command | Aliases | Description |
+|---------|---------|-------------|
+| `/help` | `/h`, `/?` | Show all available commands |
+| `/status` | | Show session status (mode, models, run count) |
+| `/mode [ask\|code\|agent]` | | Show or switch current mode |
+| `/models` | `/m` | List all configured models |
+| `/responders [a,b,c]` | | Show or set responders |
+| `/executor [name]` | | Show or set executor |
+| `/synthesizer [name]` | | Show or set synthesizer (`none` to clear) |
+| `/language [lang]` | `/lang` | Show or set model response language |
+| `/usage` | `/u` | Show per-CLI usage statistics |
+| `/config` | `/c`, `/settings` | Show current configuration summary |
+| `/detect` | `/d` | Detect installed CLIs |
+| `/clear` | `/new` | Clear screen and reset session |
+| `/compact` | | (stub) Summarize conversation to free tokens |
+| `/resume` | `/continue` | (stub) Resume a previous session |
+| `/update` | | (stub) Check and install updates |
+| `/exit` | `/quit`, `/q` | Exit REPL |
 
-### CLI Flags（進入前 `--` 指令）
+---
 
-| Flag | 說明 | 對齊 |
-|------|------|------|
-| `-p`, `--print` | 單輪模式（非互動） | Devin, agy, Grok |
-| `-m`, `--model <name>` | 指定模型（`--executor` 的別名） | Codex, agy, Grok |
-| `--json` | JSON 輸出格式 | Grok (`--output-format json`) |
-| `--responders <a,b,c>` | 指定 responders | OpenConvene 獨有 |
-| `--executor <name>` | 指定 executor | OpenConvene 獨有 |
-| `--synthesizer <name>` | 指定 synthesizer | OpenConvene 獨有 |
-| `--config <path>` | 指定 config 路徑 | OpenConvene 獨有 |
-| `--timeout <sec>` | 覆寫 timeout | OpenConvene 獨有 |
-| `--verbose` | 顯示原始回應和 metadata | OpenConvene 獨有 |
-| `--` | 分隔符（提示詞前加 `--`） | Devin |
+## CLI Flags
+
+| Flag | Description |
+|------|-------------|
+| `-p`, `--print` | Non-interactive single-shot mode |
+| `-m`, `--model <name>` | Specify model (alias for `--executor`) |
+| `--json` | JSON output format |
+| `--responders <a,b,c>` | Specify responders |
+| `--executor <name>` | Specify executor |
+| `--synthesizer <name>` | Specify synthesizer |
+| `--config <path>` | Specify config file path |
+| `--timeout <sec>` | Override timeout |
+| `--verbose` | Show raw responses and metadata |
+| `--language <lang>` | Set model response language |
+| `--` | Separator (add before prompt) |
+
+---
 
 ## Why Go
 
-- **單一靜態二進位**：編譯產出無 runtime 依賴，`curl + chmod` 即可用
-- **goroutines 天生並行**：N 個 responder 平行 fan-out，比 Python asyncio 更輕量
-- **快速啟動**：~5ms 啟動，適合 CLI 場景
-- **靜態型別**：強型別 struct 取代 map，重構安全
-- **跨平台**：`GOOS=windows/linux/darwin` 一鍵交叉編譯
+- **Single static binary** — compiled output has zero runtime dependencies; `curl + chmod` and it works
+- **Goroutines for native concurrency** — N responders fan-out in parallel, lighter than Python asyncio
+- **Fast startup** — ~5ms launch, ideal for CLI use
+- **Static typing** — strong-typed structs replace maps, refactoring is safe
+- **Cross-platform** — `GOOS=windows/linux/darwin` one-command cross-compilation
+
+---
 
 ## Documentation
 
-- [Overview](Docs/00-Overview.md) — 概覽、設計動機、與 Fusion/MoA 比較
-- [Architecture](Docs/01-Architecture.md) — 系統架構圖、Go module 結構、資料流
-- [Usage Guide](Docs/02-Usage-Guide.md) — 完整使用指南（安裝、設定、參數、模式）
-- [Model Adapters](Docs/03-Model-Adapters.md) — 9 個 CLI adapter 設計、read_only 能力矩陣
-- [Configuration](Docs/04-Configuration.md) — models.yaml 完整 schema + 範例
-- [Examples](Docs/05-Examples.md) — 各模式使用範例
-- [Troubleshooting](Docs/06-Troubleshooting.md) — 常見問題與解決方案
+| Document | Content |
+|----------|---------|
+| [Overview](Docs/00-Overview.md) | Design motivation, comparison with Fusion/MoA |
+| [Architecture](Docs/01-Architecture.md) | System architecture, Go module structure, data flow |
+| [Usage Guide](Docs/02-Usage-Guide.md) | Complete usage guide (install, config, flags, modes) |
+| [Model Adapters](Docs/03-Model-Adapters.md) | 9 CLI adapter designs, read-only capability matrix |
+| [Configuration](Docs/04-Configuration.md) | Full `models.yaml` schema + examples |
+| [Examples](Docs/05-Examples.md) | Real-world usage examples for each mode |
+| [Troubleshooting](Docs/06-Troubleshooting.md) | Common issues and solutions |
+
+---
 
 ## Build from Source
 
@@ -147,8 +241,10 @@ cd open-convene-cli
 go build -o openconvene ./cmd/openconvene
 ```
 
-> 前置條件：Go 1.24+
+> Prerequisite: Go 1.24+
+
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
