@@ -436,8 +436,9 @@ openconvene agent
 ```
 openconvene(code)> fix the bug in main.go     # 直接下提示詞
 openconvene(code)> /mode ask                  # 切換到 ask 模式
-openconvene(ask)> /model devin                # 切換 executor 模型
+openconvene(ask)> /executor devin             # 切換 executor 模型
 openconvene(ask)> /responders agy,grok,codex  # 切換 responders
+openconvene(ask)> /language zh-TW             # 設定模型回應語言
 openconvene(ask)> /status                     # 查看 session 狀態
 openconvene(ask)> /usage                      # 查看各 CLI 使用量
 openconvene(ask)> /new                        # 清除 session 重新開始
@@ -448,7 +449,9 @@ openconvene(ask)> /exit                       # 離開 REPL
 ### 說明
 
 - 不帶 task 參數時自動進入互動式 REPL（類似 codex、grok、agy、devin）
-- Slash 指令對齊四大 CLI 慣例（`/model`、`/status`、`/new`、`/compact` 等）
+- fish-style menu-complete：按 Tab 列出補全選單，上下鍵導航候選項
+- 增量歷史搜尋：Ctrl-R 反向搜尋、Ctrl-S 正向搜尋
+- Slash 指令對齊四大 CLI 慣例（`/executor`、`/status`、`/new`、`/compact` 等）
 - `/usage` 追蹤本次 session 各 CLI 的呼叫次數、成功/失敗、耗時
 - 離開時自動印出 session 摘要
 - 詳細 slash 指令列表見 02-Usage-Guide.md

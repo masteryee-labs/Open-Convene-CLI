@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（S1 架構 Session 產出）
 > **Module**：`github.com/masteryee-labs/open-convene-cli`
-> **語言**：Go >= 1.22
+> **語言**：Go >= 1.24
 
 ---
 
@@ -564,22 +564,28 @@ func DetectAvailableAdapters() map[string]bool {
 | **subprocess** | `os/exec` + `context.WithTimeout` | 管理外部 CLI 進程的標準方案，跨平台一致 |
 | **錯誤處理** | `errors.New` / `fmt.Errorf` + 自訂 `ConveneError` type | Go 慣例；ConveneError 攜帶 phase / model / cause |
 | **日誌** | `log/slog`（Go 1.21+ 標準庫） | 結構化日誌，無外部依賴 |
-| **Go 版本** | >= 1.22 | 須支援 context 取消、log/slog；與 S0 安裝的 1.22.5 對齊 |
+| **REPL readline** | `github.com/reeflective/readline` v1.1.4 | fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋、Vim/Emacs 模式、`.inputrc` 支援 |
+| **Go 版本** | >= 1.24 | 須支援 reeflective/readline v1.1.4（要求 Go 1.23.6+）、context 取消、log/slog |
 
-### go.mod（S1 已產出）
+### go.mod（目前版本）
 
 ```go
 module github.com/masteryee-labs/open-convene-cli
 
-go 1.22
+go 1.23.6
+
+toolchain go1.24.8
 
 require (
+	github.com/reeflective/readline v1.1.4
 	github.com/spf13/cobra v1.8.1
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/sync v0.7.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 ```
 
-> `golang.org/x/sync`（errgroup）在 S3 實作引擎時按需加入。`go.sum` 由 `go mod tidy` 產生。
+> `go.sum` 由 `go mod tidy` 產生。reeflective/readline 取代了早期的 chzyer/readline，提供 fish-style menu-complete 補全體驗。
 
 ---
 

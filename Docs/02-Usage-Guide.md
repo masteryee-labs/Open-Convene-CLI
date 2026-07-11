@@ -2,7 +2,7 @@
 
 > **版本**：v1.0（S7 User Docs Session 產出）
 > **Module**：`github.com/masteryee-labs/open-convene-cli`
-> **語言**：Go >= 1.22
+> **語言**：Go >= 1.24
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 前置條件
 
-- **Go 1.22+**（若從源碼安裝或編譯）
+- **Go 1.24+**（若從源碼安裝或編譯）
 - **至少 1 個 AI CLI 工具已安裝**——OpenConveneCLI 支援以下 9 個可選 CLI，你至少需要安裝其中一個：
 
 | CLI | 安裝指令（僅供參考） |
@@ -194,7 +194,8 @@ In the REPL, you can:
 1. Type any text → it runs as a prompt through the Convene pipeline in the current mode
 2. Use slash commands (starting with `/`) to inspect state, switch modes, change models, and view usage
 3. Press **Up/Down arrows** to browse command history (persists across sessions)
-4. Press **Tab** after typing `/` to auto-complete slash commands
+4. Press **Tab** after typing `/` to open a fish-style completion menu — use **Up/Down arrows** to navigate candidates, **Enter** to confirm, **Shift-Tab** to cycle backward
+5. Press **Ctrl-R** for reverse incremental history search
 
 ```
 openconvene(code)> fix the bug in main.go     # direct prompt
@@ -214,9 +215,13 @@ openconvene(ask)> /exit                       # exit REPL
 ```
 
 > **REPL 特色**：
+> - **fish-style menu-complete** — 按 Tab 列出補全選單，上下鍵導航候選項，Enter 確認，Shift-Tab 反向循環。支援兩階段補全：命令名（`/ex` → `/executor`, `/exit`）和參數（`/executor d` → `devin`, `devin:glm-5.2`）
+> - **增量歷史搜尋** — Ctrl-R 反向搜尋、Ctrl-S 正向搜尋，邊打字邊過濾
 > - **上下鍵歷史** — 命令歷史儲存到 `~/.openconvene_history`，跨 session 保留
-> - **Tab 補全** — 輸入 `/` 後按 Tab 顯示所有匹配的 slash 命令
+> - **無參數提示** — 輸入 `/executor` 不帶參數直接 Enter，列出所有可用模型
 > - **自動生成 config** — 若沒有 `models.yaml`，第一次啟動 REPL 時自動生成預設 config（使用 `devin:glm-5.2` 等動態模型名），無需先跑 `openconvene init`
+>
+> **readline 引擎**：使用 [`reeflective/readline`](https://github.com/reeflective/readline) v1.1.4，支援完整 `.inputrc` 設定、Vim/Emacs 模式、語法高亮、bracketed paste。
 
 ### 語言設定
 

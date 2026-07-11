@@ -69,9 +69,10 @@ openconvene check               # 驗證 models.yaml
 ```
 openconvene(code)> fix the bug in main.go     # 直接下提示詞
 openconvene(code)> /mode ask                  # 切換到 ask 模式
-openconvene(ask)> /model devin                # 切換 executor 模型（同 /executor）
+openconvene(ask)> /executor devin             # 切換 executor 模型
 openconvene(ask)> /responders agy,grok,codex  # 切換 responders
 openconvene(ask)> /synthesizer grok           # 切換 synthesizer
+openconvene(ask)> /language zh-TW             # 設定模型回應語言
 openconvene(ask)> /status                     # 查看當前 session 狀態
 openconvene(ask)> /usage                      # 查看本次 session 各 CLI 使用量
 openconvene(ask)> /models                     # 列出已設定的模型
@@ -82,6 +83,8 @@ openconvene(ask)> /help                       # 顯示所有指令
 openconvene(ask)> /exit                       # 離開 REPL
 ```
 
+> **REPL 特色**：fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋（Ctrl-R）、命令歷史跨 session 保留。使用 [`reeflective/readline`](https://github.com/reeflective/readline) v1.1.4 引擎。
+
 ### Slash 指令一覽
 
 | 指令 | 簡寫/別名 | 說明 | 對齊 |
@@ -89,11 +92,11 @@ openconvene(ask)> /exit                       # 離開 REPL
 | `/help` | `/h`, `/?` | 顯示所有可用指令 | Devin, Codex, agy |
 | `/status` | | 顯示 session 狀態（模式、模型、執行數） | Codex |
 | `/mode [ask\|code\|agent]` | | 顯示或切換當前模式 | Devin, Codex |
-| `/model [name]` | | 顯示或切換 executor 模型 | Devin, Codex, agy |
 | `/models` | `/m` | 列出已設定的模型 | OpenConvene 獨有 |
 | `/responders [a,b,c]` | | 顯示或設定 responders | OpenConvene 獨有 |
 | `/executor [name]` | | 顯示或設定 executor | OpenConvene 獨有 |
 | `/synthesizer [name]` | | 顯示或設定 synthesizer | OpenConvene 獨有 |
+| `/language [lang]` | `/lang` | 顯示或設定模型回應語言 | OpenConvene 獨有 |
 | `/usage` | `/u` | 顯示各 CLI 使用量統計 | agy |
 | `/config` | `/c`, `/settings` | 顯示當前設定摘要 | agy |
 | `/detect` | `/d` | 偵測已安裝的 CLI | OpenConvene 獨有 |
@@ -144,7 +147,7 @@ cd open-convene-cli
 go build -o openconvene ./cmd/openconvene
 ```
 
-> 前置條件：Go 1.22+
+> 前置條件：Go 1.24+
 
 ## License
 

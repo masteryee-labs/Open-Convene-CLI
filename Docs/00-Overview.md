@@ -1,7 +1,7 @@
 # 00 — OpenConveneCLI 概覽
 
 > **版本**：v1.0（S1 架構 Session 產出）
-> **語言**：Go >= 1.22
+> **語言**：Go >= 1.24
 > **Module**：`github.com/masteryee-labs/open-convene-cli`
 
 ---
@@ -97,7 +97,7 @@ OpenConveneCLI 相對於 Fusion / MoA 的獨特之處：
 | `agent` | `openconvene agent "task"` | N responder 出策略 → synthesizer 整合 → **executor agent 長時間執行** | ✓ agent | 複雜多步任務、自動化管線 |
 
 > 三種模式不帶 task 參數時均進入互動式 REPL：`openconvene`、`openconvene ask`、`openconvene agent`。
-> REPL 支援上下鍵歷史、Tab 補全 slash 命令、`/language` 設定模型回應語言。
+> REPL 支援 fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋（Ctrl-R）、`/language` 設定模型回應語言。
 > synthesizer 為可選：不指定時，executor 兼任 synthesizer（直接讀 N 份回應後執行）。
 > 若無 `models.yaml`，首次啟動自動生成預設 config（使用動態模型名 `devin:glm-5.2` 等）。
 
@@ -109,7 +109,7 @@ OpenConveneCLI 相對於 Fusion / MoA 的獨特之處：
 |------|------|
 | `00-Overview.md` | 本文——概覽、動機、與 Fusion/MoA 比較 |
 | `01-Architecture.md` | 系統架構圖、Go module 結構、資料流、adapter/convene 介面、CLI 介面、config schema、跨平台說明 |
-| `02-Usage-Guide.md` | 安裝、初始設定、基本用法、互動式 REPL 模式（readline 歷史/Tab 補全/語言設定）、完整參數參考、模式說明、Config 說明 |
+| `02-Usage-Guide.md` | 安裝、初始設定、基本用法、互動式 REPL 模式（reeflective/readline fish-style 補全/歷史搜尋/語言設定）、完整參數參考、模式說明、Config 說明 |
 | `03-Model-Adapters.md` | 9 個 CLI adapter 設計、read_only 能力矩陣、各 CLI 呼叫方式與限制 |
 | `04-Configuration.md` | models.yaml 完整 schema + 範例 config + 語言設定 |
 | `05-Examples.md` | 各模式實際使用範例（ask / code / agent / stdin / verbose / timeout / language） |

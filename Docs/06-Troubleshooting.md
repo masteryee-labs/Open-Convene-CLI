@@ -423,17 +423,24 @@ set PATH=%PATH%;%USERPROFILE%\go\bin
 
 3. 若有 cobra 版本問題：
    ```bash
-   # 確認 cobra 版本為 v1.8.1（與 go 1.22 相容）
+   # 確認 cobra 版本為 v1.8.1（與 go 1.24 相容）
    go get github.com/spf13/cobra@v1.8.1
    ```
-   > ★`go get cobra@latest` 會拉取 v1.10.2，該版本要求 go 1.23+，與專案 go 1.22 不相容。
+   > ★`go get cobra@latest` 會拉取 v1.10.2，該版本要求 go 1.23+。專案已升級到 Go 1.24，可直接使用 latest，但鎖定 v1.8.1 較穩定。
 
 4. 若有 golang.org/x/sync 版本問題：
    ```bash
-   # 確認 sync 版本為 v0.7.0（相容 go 1.22）
+   # 確認 sync 版本為 v0.7.0（相容 go 1.24）
    go get golang.org/x/sync@v0.7.0
    ```
    > ★`go get golang.org/x/sync@latest` 可能拉取需要 go 1.25+ 的版本。
+
+5. 若有 reeflective/readline 版本問題：
+   ```bash
+   # 確認 readline 版本為 v1.1.4（要求 Go 1.23.6+）
+   go get github.com/reeflective/readline@v1.1.4
+   ```
+   > ★`go get readline@latest` 會拉取 v1.3.0，該版本要求 Go 1.25+，與專案 Go 1.24 不相容。必須鎖定 v1.1.4。
 
 ### 跨平台編譯
 
