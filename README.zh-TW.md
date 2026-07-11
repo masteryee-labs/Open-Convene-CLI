@@ -138,21 +138,21 @@ OpenConveneCLI 提供三種模式，對應真實開發者工作流程：
 
 ## 支援的 AI CLI
 
-OpenConveneCLI 開箱即支援 9 款 AI 程式碼代理 CLI：
+OpenConveneCLI 開箱即支援 9 款 AI 程式碼代理 CLI。每個 CLI 連接各自的模型後端——OpenConveneCLI 本身不依賴任何雲端服務。至少需安裝 1 款 CLI 方可使用本工具。
 
-| CLI | 唯讀 | 執行模型 | 安裝命令 |
-|-----|-----------|----------|-----------------|
-| [Devin](https://devin.ai) | 是 | 是 | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
-| [Grok](https://x.ai) | 是 | 是 | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
-| [Codex](https://github.com/openai/codex) | 是 | 是 | `npm install -g @openai/codex` |
-| [Antigravity (agy)](https://antigravity.google) | 是 | 是 | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
-| [Cursor](https://cursor.com) | 是 | 否 | `curl https://cursor.com/install -fsS \| bash` |
-| [Kimi Code](https://code.kimi.com) | 是 | 是 | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
-| [Hermes](https://github.com/hashicorp/hermes) | 是 | 是 | `hermes setup --portal` |
-| [Aider](https://aider.chat) | 是 | 是 | `python -m pip install aider-install && aider-install` |
-| [OpenCode](https://opencode.ai) | 是 | 是 | 請見 [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| CLI | 說明 | 唯讀 | 執行模型 | 安裝命令 |
+|-----|------|------|----------|----------|
+| [Devin](https://devin.ai) | Cognition 的自主 AI 軟體工程師。全端 coding agent，具備 shell 存取、瀏覽器控制與長時程任務規劃能力。 | 視情況 | 是 | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
+| [Grok](https://x.ai) | xAI 的 AI coding CLI，由 Grok 模型驅動。快速推理與程式碼生成，具備即時知識存取能力。 | 視情況 | 是 | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
+| [Codex](https://github.com/openai/codex) | OpenAI 的終端機 coding agent。沙箱執行——`--sandbox read-only` 用於安全研究，`workspace-write` 用於程式碼執行。 | 是 | 是 | `npm install -g @openai/codex` |
+| [Antigravity / agy](https://antigravity.google) | Google 的 AI coding agent CLI，由 Gemini 驅動。支援多檔案編輯、程式碼審查與 agentic 任務執行（Gemini 2.5 Pro/Flash）。 | 視情況 | 是 | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+| [Cursor](https://cursor.com) | AI 優先的程式碼編輯器，具備 agent 模式。無 `--force` 時為唯讀分析；加 `--force` 時自主編輯檔案。由 Claude、GPT-4、Gemini 驅動。 | 是 | 是 | `curl https://cursor.com/install -fsS \| bash` |
+| [Kimi Code](https://code.kimi.com) | Moonshot AI 的 coding CLI，由 Kimi K2 驅動。長上下文程式碼理解（256K tokens），唯讀操作自動批准。 | 是 | 是 | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| [Hermes](https://github.com/hashicorp/hermes) | HashiCorp 的 AI agent CLI。`chat -q` 單次查詢模式；agentic 模式用於多步驟基礎設施與程式碼任務。 | 視情況 | 是 | `hermes setup --portal` |
+| [Aider](https://aider.chat) | 開源 AI 配對程式設計工具。與 Git 整合，支援 GPT-4o、Claude 3.5、DeepSeek 及本地 LLM。編輯優先設計——預設會修改檔案。 | 否 | 是 | `python -m pip install aider-install && aider-install` |
+| [OpenCode](https://opencode.ai) | 開源 AI coding agent。`run` 子命令用於非互動單一 prompt；agentic 模式用於自主開發。支援多個 LLM 供應商。 | 視情況 | 是 | 請見 [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 
-> 每個 CLI 連接各自的模型後端。OpenConveneCLI 本身不依賴任何雲端服務。
+> **唯讀**欄表示該 CLI 能否安全地以回應模型模式運作（不修改檔案）。`是` = 強制唯讀、`視情況` = 非互動模式但可能觸發工具、`否` = 預設會修改檔案（僅作為執行模型）。
 
 ---
 

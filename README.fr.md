@@ -138,21 +138,21 @@ OpenConveneCLI propose trois modes correspondant aux flux de travail réels des 
 
 ## CLIs IA Pris en Charge
 
-OpenConveneCLI prend en charge 9 CLIs d'agents de codage IA prêts à l'emploi :
+OpenConveneCLI prend en charge 9 CLIs d'agents de codage IA prêts à l'emploi. Chaque CLI se connecte à son propre backend de modèle — OpenConveneCLI lui-même ne dépend d'aucun service cloud. Au moins 1 CLI doit être installé pour utiliser l'outil.
 
-| CLI | Lecture seule | Exécuteur | Commande d'installation |
-|-----|---------------|-----------|--------------------------|
-| [Devin](https://devin.ai) | Oui | Oui | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
-| [Grok](https://x.ai) | Oui | Oui | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
-| [Codex](https://github.com/openai/codex) | Oui | Oui | `npm install -g @openai/codex` |
-| [Antigravity (agy)](https://antigravity.google) | Oui | Oui | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
-| [Cursor](https://cursor.com) | Oui | Non | `curl https://cursor.com/install -fsS \| bash` |
-| [Kimi Code](https://code.kimi.com) | Oui | Oui | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
-| [Hermes](https://github.com/hashicorp/hermes) | Oui | Oui | `hermes setup --portal` |
-| [Aider](https://aider.chat) | Oui | Oui | `python -m pip install aider-install && aider-install` |
-| [OpenCode](https://opencode.ai) | Oui | Oui | Voir [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| CLI | Description | Lecture seule | Exécuteur | Installation |
+|-----|-------------|---------------|-----------|--------------|
+| [Devin](https://devin.ai) | Ingénieur logiciel IA autonome de Cognition. Agent de codification full-stack avec accès shell, contrôle navigateur et planification de tâches longue durée. | Peut-être | Oui | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
+| [Grok](https://x.ai) | CLI de codification IA de xAI avec modèles Grok. Raisonnement rapide et génération de code avec accès aux connaissances en temps réel. | Peut-être | Oui | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
+| [Codex](https://github.com/openai/codex) | Agent de codification basé terminal d'OpenAI. Exécution en sandbox — `--sandbox read-only` pour recherche sûre, `workspace-write` pour exécution de code. | Oui | Oui | `npm install -g @openai/codex` |
+| [Antigravity / agy](https://antigravity.google) | CLI d'agent de codification IA de Google avec Gemini. Édition multi-fichiers, revue de code et exécution de tâches agentiques (Gemini 2.5 Pro/Flash). | Peut-être | Oui | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+| [Cursor](https://cursor.com) | Éditeur de code AI-first avec mode agent. Analyse en lecture seule sans `--force` ; édition autonome de fichiers avec `--force`. Propulsé par Claude, GPT-4 et Gemini. | Oui | Oui | `curl https://cursor.com/install -fsS \| bash` |
+| [Kimi Code](https://code.kimi.com) | CLI de codification de Moonshot AI avec Kimi K2. Compréhension de code à contexte long (256K tokens), opérations en lecture seule auto-approuvées. | Oui | Oui | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| [Hermes](https://github.com/hashicorp/hermes) | CLI d'agent IA de HashiCorp. Mode requête unique via `chat -q` ; mode agentique pour tâches d'infrastructure et de code multi-étapes. | Peut-être | Oui | `hermes setup --portal` |
+| [Aider](https://aider.chat) | Outil de programmation en binôme IA open source. Intégration Git, supporte GPT-4o, Claude 3.5, DeepSeek et LLMs locaux. Conception édition d'abord — modifie les fichiers par défaut. | Non | Oui | `python -m pip install aider-install && aider-install` |
+| [OpenCode](https://opencode.ai) | Agent de codification IA open source. Sous-commande `run` pour prompts uniques non interactifs ; mode agentique pour développement autonome. Supporte plusieurs fournisseurs de LLM. | Peut-être | Oui | Voir [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 
-> Chaque CLI se connecte à son propre backend de modèle. OpenConveneCLI lui-même ne dépend d'aucun service cloud.
+> **Lecture seule** indique si le CLI peut fonctionner sûrement en mode répondant (sans modification de fichiers). `Oui` = lecture seule imposée, `Peut-être` = mode non-interactif mais peut déclencher des outils, `Non` = modifie les fichiers par défaut (exécuteur uniquement).
 
 ---
 

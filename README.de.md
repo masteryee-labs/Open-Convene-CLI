@@ -138,21 +138,21 @@ OpenConveneCLI bietet drei Modi, die echten Entwickler-Workflows entsprechen:
 
 ## Unterstützte KI-CLIs
 
-OpenConveneCLI unterstützt standardmäßig 9 KI-Coding-Agent-CLIs:
+OpenConveneCLI unterstützt standardmäßig 9 KI-Coding-Agent-CLIs. Jede CLI verbindet sich mit ihrem eigenen Modell-Backend — OpenConveneCLI selbst ist von keinem Cloud-Dienst abhängig. Mindestens 1 CLI muss installiert sein, um das Tool zu nutzen.
 
-|| CLI | Read-Only | Executor | Installationsbefehl |
-||-----|-----------|----------|-----------------|
-|| [Devin](https://devin.ai) | Ja | Ja | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
-|| [Grok](https://x.ai) | Ja | Ja | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
-|| [Codex](https://github.com/openai/codex) | Ja | Ja | `npm install -g @openai/codex` |
-|| [Antigravity (agy)](https://antigravity.google) | Ja | Ja | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
-|| [Cursor](https://cursor.com) | Ja | Nein | `curl https://cursor.com/install -fsS \| bash` |
-|| [Kimi Code](https://code.kimi.com) | Ja | Ja | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
-|| [Hermes](https://github.com/hashicorp/hermes) | Ja | Ja | `hermes setup --portal` |
-|| [Aider](https://aider.chat) | Ja | Ja | `python -m pip install aider-install && aider-install` |
-|| [OpenCode](https://opencode.ai) | Ja | Ja | Siehe [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| CLI | Beschreibung | Read-Only | Executor | Installation |
+|-----|-------------|-----------|----------|--------------|
+| [Devin](https://devin.ai) | Autonomer KI-Softwareingenieur von Cognition. Full-Stack-Coding-Agent mit Shell-Zugriff, Browser-Steuerung und Planung langfristiger Aufgaben. | Vielleicht | Ja | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
+| [Grok](https://x.ai) | KI-Coding-CLI von xAI mit Grok-Modellen. Schnelles Reasoning und Code-Generierung mit Echtzeit-Wissenszugriff. | Vielleicht | Ja | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
+| [Codex](https://github.com/openai/codex) | Terminalbasierter Coding-Agent von OpenAI. Sandbox-Ausführung — `--sandbox read-only` für sichere Recherche, `workspace-write` für Code-Ausführung. | Ja | Ja | `npm install -g @openai/codex` |
+| [Antigravity / agy](https://antigravity.google) | KI-Coding-Agent-CLI von Google mit Gemini. Multi-Datei-Bearbeitung, Code-Review und agentische Aufgaben-Ausführung (Gemini 2.5 Pro/Flash). | Vielleicht | Ja | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+| [Cursor](https://cursor.com) | AI-First-Code-Editor mit Agent-Modus. Read-Only-Analyse ohne `--force`; autonome Dateibearbeitung mit `--force`. Angetrieben von Claude, GPT-4 und Gemini. | Ja | Ja | `curl https://cursor.com/install -fsS \| bash` |
+| [Kimi Code](https://code.kimi.com) | Coding-CLI von Moonshot AI mit Kimi K2. Long-Context-Code-Verständnis (256K Tokens), Read-Only-Operationen automatisch genehmigt. | Ja | Ja | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| [Hermes](https://github.com/hashicorp/hermes) | KI-Agent-CLI von HashiCorp. Einzelabfrage-Modus via `chat -q`; agentischer Modus für Multi-Step-Infrastruktur- und Code-Aufgaben. | Vielleicht | Ja | `hermes setup --portal` |
+| [Aider](https://aider.chat) | Open-Source-KI-Pair-Programming-Tool. Git-Integration, unterstützt GPT-4o, Claude 3.5, DeepSeek und lokale LLMs. Edit-First-Design — ändert standardmäßig Dateien. | Nein | Ja | `python -m pip install aider-install && aider-install` |
+| [OpenCode](https://opencode.ai) | Open-Source-KI-Coding-Agent. `run`-Subcommand für nicht-interaktive Single-Prompts; agentischer Modus für autonome Entwicklung. Unterstützt mehrere LLM-Provider. | Vielleicht | Ja | Siehe [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 
-> Jede CLI verbindet sich mit ihrem eigenen Modell-Backend. OpenConveneCLI selbst ist von keinem Cloud-Dienst abhängig.
+> **Read-Only** gibt an, ob die CLI sicher im Responder-Modus arbeiten kann (keine Dateimodifikationen). `Ja` = erzwungenes Read-Only, `Vielleicht` = nicht-interaktiver Modus, kann aber Tools auslösen, `Nein` = ändert standardmäßig Dateien (nur Executor).
 
 ---
 

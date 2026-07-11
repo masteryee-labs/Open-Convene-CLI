@@ -138,21 +138,21 @@ OpenConveneCLI provides three modes matching real developer workflows:
 
 ## Supported AI CLIs
 
-OpenConveneCLI supports 9 AI coding-agent CLIs out of the box:
+OpenConveneCLI supports 9 AI coding-agent CLIs out of the box. Each CLI connects to its own model backend — OpenConveneCLI itself does not depend on any cloud service. At least 1 CLI must be installed to use the tool.
 
-| CLI | Read-Only | Executor | Install Command |
-|-----|-----------|----------|-----------------|
-| [Devin](https://devin.ai) | Yes | Yes | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
-| [Grok](https://x.ai) | Yes | Yes | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
-| [Codex](https://github.com/openai/codex) | Yes | Yes | `npm install -g @openai/codex` |
-| [Antigravity (agy)](https://antigravity.google) | Yes | Yes | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
-| [Cursor](https://cursor.com) | Yes | No | `curl https://cursor.com/install -fsS \| bash` |
-| [Kimi Code](https://code.kimi.com) | Yes | Yes | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
-| [Hermes](https://github.com/hashicorp/hermes) | Yes | Yes | `hermes setup --portal` |
-| [Aider](https://aider.chat) | Yes | Yes | `python -m pip install aider-install && aider-install` |
-| [OpenCode](https://opencode.ai) | Yes | Yes | See [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
+| CLI | Description | Read-Only | Executor | Install |
+|-----|-------------|-----------|----------|---------|
+| [Devin](https://devin.ai) | Autonomous AI software engineer by Cognition. Full-stack coding agent with shell access, browser control, and long-horizon task planning. | Maybe | Yes | `curl -fsSL https://cli.devin.ai/install.sh \| bash` |
+| [Grok](https://x.ai) | xAI's AI coding CLI powered by Grok models. Fast reasoning and code generation with real-time knowledge access. | Maybe | Yes | `curl -fsSL https://x.ai/cli/install.sh \| bash` |
+| [Codex](https://github.com/openai/codex) | OpenAI's terminal-based coding agent. Sandboxed execution with `--sandbox read-only` for safe research and `workspace-write` for code execution. | Yes | Yes | `npm install -g @openai/codex` |
+| [Antigravity / agy](https://antigravity.google) | Google's AI coding agent CLI powered by Gemini. Multi-file editing, code review, and agentic task execution with Gemini 2.5 Pro/Flash. | Maybe | Yes | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` |
+| [Cursor](https://cursor.com) | AI-first code editor with agent mode. Read-only analysis without `--force`; autonomous file editing with `--force`. Powered by Claude, GPT-4, and Gemini. | Yes | Yes | `curl https://cursor.com/install -fsS \| bash` |
+| [Kimi Code](https://code.kimi.com) | Moonshot AI's coding CLI powered by Kimi K2. Long-context code understanding (256K tokens) with read-only operations auto-approved. | Yes | Yes | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash` |
+| [Hermes](https://github.com/hashicorp/hermes) | HashiCorp's AI agent CLI. Single-query mode via `chat -q`; agentic mode for multi-step infrastructure and code tasks. | Maybe | Yes | `hermes setup --portal` |
+| [Aider](https://aider.chat) | Open-source AI pair programming tool. Works with Git, supports GPT-4o, Claude 3.5, DeepSeek, and local LLMs. Edit-first design — modifies files by default. | No | Yes | `python -m pip install aider-install && aider-install` |
+| [OpenCode](https://opencode.ai) | Open-source AI coding agent. Non-interactive `run` subcommand for single prompts; agentic mode for autonomous development. Supports multiple LLM providers. | Maybe | Yes | See [opencode.ai/docs/cli](https://opencode.ai/docs/cli/) |
 
-> Each CLI connects to its own model backend. OpenConveneCLI itself does not depend on any cloud service.
+> **Read-Only** indicates whether the CLI can safely operate in responder mode (no file modifications). `Yes` = enforced read-only, `Maybe` = non-interactive mode but may trigger tools, `No` = modifies files by default (executor only).
 
 ---
 
