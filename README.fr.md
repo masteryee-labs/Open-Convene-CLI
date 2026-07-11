@@ -27,6 +27,7 @@ Cette approche s'inscrit dans la lignée de [Mixture-of-Agents (MoA)](https://ar
 
 ## Table des Matières
 
+- [Installation](#installation)
 - [Démarrage Rapide](#démarrage-rapide)
 - [Fonctionnement](#fonctionnement)
 - [CLIs IA Pris en Charge](#clis-ia-pris-en-charge)
@@ -35,34 +36,68 @@ Cette approche s'inscrit dans la lignée de [Mixture-of-Agents (MoA)](https://ar
 - [Options CLI](#options-cli)
 - [Pourquoi Go](#pourquoi-go)
 - [Documentation](#documentation)
-- [Compilation depuis les Sources](#compilation-depuis-les-sources)
 - [Licence](#licence)
+
+---
+
+## Installation
+
+### Installation en une ligne (recommandé)
+
+**Linux / macOS :**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell) :**
+
+```powershell
+irm https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.ps1 | iex
+```
+
+### Installer avec Go
+
+```bash
+go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
+```
+
+### Compiler depuis les sources
+
+```bash
+git clone https://github.com/masteryee-labs/open-convene-cli.git
+cd open-convene-cli
+go build -o openconvene ./cmd/openconvene
+```
+
+> Prérequis : Go 1.24+
 
 ---
 
 ## Démarrage Rapide
 
 ```bash
-# 1. Install
-go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
-
-# 2. Detect installed AI CLIs
+# 1. Detect installed AI CLIs
 openconvene detect
 
-# 3. Generate config
+# 2. Generate config
 openconvene init --path ~/.config/openconvene/models.yaml
 
-# 4. Run multi-model collaboration
+# 3. Run multi-model collaboration
 openconvene ask "your question" --responders agy,grok
 
-# 5. Write code (default code mode)
+# 4. Write code (default code mode)
 openconvene "fix the bug in foo.go"
 
-# 6. Agent task
+# 5. Agent task
 openconvene agent "deploy the app"
 ```
 
 > Les modèles répondants peuvent utiliser n'importe quel CLI installé : agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode (au moins 1 requis).
+
+### Mettre à jour
+
+Dans le REPL, tapez `/update` pour voir la commande de mise à jour de votre plateforme. Ou relancez la commande d'installation — elle remplacera l'ancien binaire par la dernière version.
 
 ---
 
@@ -230,18 +265,6 @@ openconvene(ask)> /exit                       # exit REPL
 | [Configuration](Docs/04-Configuration.md) | Schéma complet de `models.yaml` + exemples |
 | [Examples](Docs/05-Examples.md) | Exemples d'utilisation réelle pour chaque mode |
 | [Troubleshooting](Docs/06-Troubleshooting.md) | Problèmes courants et solutions |
-
----
-
-## Compilation depuis les Sources
-
-```bash
-git clone https://github.com/masteryee-labs/open-convene-cli.git
-cd open-convene-cli
-go build -o openconvene ./cmd/openconvene
-```
-
-> Prérequis : Go 1.24+
 
 ---
 

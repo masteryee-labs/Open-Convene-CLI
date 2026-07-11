@@ -46,6 +46,7 @@ import (
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 	"github.com/masteryee-labs/open-convene-cli/internal/convene"
 	"github.com/masteryee-labs/open-convene-cli/internal/mode"
+	"github.com/masteryee-labs/open-convene-cli/internal/version"
 )
 
 // ---------------------------------------------------------------------------
@@ -91,8 +92,9 @@ Quick start:
 
 If your task starts with a subcommand name (e.g. "ask"), use -- to disambiguate:
   openconvene -- ask`,
-		RunE: runRoot,
-		Args: cobra.ArbitraryArgs,
+		Version: version.Version,
+		RunE:    runRoot,
+		Args:    cobra.ArbitraryArgs,
 	}
 
 	addConveneFlags(rootCmd)

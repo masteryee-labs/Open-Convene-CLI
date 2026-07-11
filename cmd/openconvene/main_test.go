@@ -1018,8 +1018,8 @@ func TestREPLUpdateStub(t *testing.T) {
 		[]string{"--config", configPath}, "/update\n/exit\n")
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "stub")
-	assert.Contains(t, output, "update")
+	assert.Contains(t, output, "Update OpenConveneCLI")
+	assert.Contains(t, output, "Current version:")
 }
 
 func TestREPLSettingsAlias(t *testing.T) {

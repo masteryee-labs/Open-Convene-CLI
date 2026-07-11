@@ -27,6 +27,7 @@
 
 ## 目录
 
+- [安装](#安装)
 - [快速开始](#快速开始)
 - [工作原理](#工作原理)
 - [支持的 AI CLI](#支持的-ai-cli)
@@ -35,34 +36,68 @@
 - [CLI 标志](#cli-标志)
 - [为什么选择 Go](#为什么选择-go)
 - [文档](#文档)
-- [从源码构建](#从源码构建)
 - [许可证](#许可证)
+
+---
+
+## 安装
+
+### 一键安装（推荐）
+
+**Linux / macOS：**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash
+```
+
+**Windows（PowerShell）：**
+
+```powershell
+irm https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.ps1 | iex
+```
+
+### 使用 Go 安装
+
+```bash
+go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
+```
+
+### 从源码编译
+
+```bash
+git clone https://github.com/masteryee-labs/open-convene-cli.git
+cd open-convene-cli
+go build -o openconvene ./cmd/openconvene
+```
+
+> 前置条件：Go 1.24+
 
 ---
 
 ## 快速开始
 
 ```bash
-# 1. Install
-go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
-
-# 2. Detect installed AI CLIs
+# 1. Detect installed AI CLIs
 openconvene detect
 
-# 3. Generate config
+# 2. Generate config
 openconvene init --path ~/.config/openconvene/models.yaml
 
-# 4. Run multi-model collaboration
+# 3. Run multi-model collaboration
 openconvene ask "your question" --responders agy,grok
 
-# 5. Write code (default code mode)
+# 4. Write code (default code mode)
 openconvene "fix the bug in foo.go"
 
-# 6. Agent task
+# 5. Agent task
 openconvene agent "deploy the app"
 ```
 
 > 响应者可使用任何已安装的 CLI：agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode（至少需要 1 个）。
+
+### 更新
+
+在 REPL 中输入 `/update` 查看适合你平台的更新命令。或者再次运行安装命令——它会用最新版本覆盖旧的二进制文件。
 
 ---
 
@@ -230,18 +265,6 @@ openconvene(ask)> /exit                       # exit REPL
 | [Configuration](Docs/04-Configuration.md) | 完整的 `models.yaml` schema 及示例 |
 | [Examples](Docs/05-Examples.md) | 各模式的真实使用示例 |
 | [Troubleshooting](Docs/06-Troubleshooting.md) | 常见问题与解决方案 |
-
----
-
-## 从源码构建
-
-```bash
-git clone https://github.com/masteryee-labs/open-convene-cli.git
-cd open-convene-cli
-go build -o openconvene ./cmd/openconvene
-```
-
-> 前置条件：Go 1.24+
 
 ---
 

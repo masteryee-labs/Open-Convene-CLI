@@ -27,6 +27,7 @@
 
 ## 목차
 
+- [설치](#설치)
 - [빠른 시작](#빠른-시작)
 - [작동 방식](#작동-방식)
 - [지원 AI CLI](#지원-ai-cli)
@@ -35,34 +36,68 @@
 - [CLI 플래그](#cli-플래그)
 - [Go를 선택한 이유](#go를-선택한-이유)
 - [문서](#문서)
-- [소스 빌드](#소스-빌드)
 - [라이선스](#라이선스)
+
+---
+
+## 설치
+
+### 원라인 설치 (권장)
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.ps1 | iex
+```
+
+### Go로 설치
+
+```bash
+go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
+```
+
+### 소스에서 빌드
+
+```bash
+git clone https://github.com/masteryee-labs/open-convene-cli.git
+cd open-convene-cli
+go build -o openconvene ./cmd/openconvene
+```
+
+> 사전 요구 사항: Go 1.24+
 
 ---
 
 ## 빠른 시작
 
 ```bash
-# 1. Install
-go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
-
-# 2. Detect installed AI CLIs
+# 1. Detect installed AI CLIs
 openconvene detect
 
-# 3. Generate config
+# 2. Generate config
 openconvene init --path ~/.config/openconvene/models.yaml
 
-# 4. Run multi-model collaboration
+# 3. Run multi-model collaboration
 openconvene ask "your question" --responders agy,grok
 
-# 5. Write code (default code mode)
+# 4. Write code (default code mode)
 openconvene "fix the bug in foo.go"
 
-# 6. Agent task
+# 5. Agent task
 openconvene agent "deploy the app"
 ```
 
 > 응답자는 설치된 모든 CLI를 사용할 수 있습니다: agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode (최소 1개 필요).
+
+### 업데이트
+
+REPL에서 `/update`를 입력하면 플랫폼에 맞는 업데이트 명령이 표시됩니다. 또는 설치 명령을 다시 실행하세요 — 최신 버전으로 이전 바이너리를 덮어씁니다.
 
 ---
 
@@ -230,18 +265,6 @@ openconvene(ask)> /exit                       # exit REPL
 | [Configuration](Docs/04-Configuration.md) | 전체 `models.yaml` 스키마 + 예시 |
 | [Examples](Docs/05-Examples.md) | 각 모드별 실제 사용 예시 |
 | [Troubleshooting](Docs/06-Troubleshooting.md) | 일반적인 문제 및 해결 방법 |
-
----
-
-## 소스 빌드
-
-```bash
-git clone https://github.com/masteryee-labs/open-convene-cli.git
-cd open-convene-cli
-go build -o openconvene ./cmd/openconvene
-```
-
-> 사전 요구 사항: Go 1.24+
 
 ---
 

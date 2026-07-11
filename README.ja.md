@@ -27,6 +27,7 @@
 
 ## 目次
 
+- [インストール](#インストール)
 - [クイックスタート](#クイックスタート)
 - [仕組み](#仕組み)
 - [対応 AI CLI](#対応-ai-cli)
@@ -35,34 +36,68 @@
 - [CLI フラグ](#cli-フラグ)
 - [なぜ Go なのか](#なぜ-go-なのか)
 - [ドキュメント](#ドキュメント)
-- [ソースからビルド](#ソースからビルド)
 - [ライセンス](#ライセンス)
+
+---
+
+## インストール
+
+### ワンラインインストール（推奨）
+
+**Linux / macOS:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.ps1 | iex
+```
+
+### Go でインストール
+
+```bash
+go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
+```
+
+### ソースからビルド
+
+```bash
+git clone https://github.com/masteryee-labs/open-convene-cli.git
+cd open-convene-cli
+go build -o openconvene ./cmd/openconvene
+```
+
+> 前提条件：Go 1.24+
 
 ---
 
 ## クイックスタート
 
 ```bash
-# 1. Install
-go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest
-
-# 2. Detect installed AI CLIs
+# 1. Detect installed AI CLIs
 openconvene detect
 
-# 3. Generate config
+# 2. Generate config
 openconvene init --path ~/.config/openconvene/models.yaml
 
-# 4. Run multi-model collaboration
+# 3. Run multi-model collaboration
 openconvene ask "your question" --responders agy,grok
 
-# 5. Write code (default code mode)
+# 4. Write code (default code mode)
 openconvene "fix the bug in foo.go"
 
-# 6. Agent task
+# 5. Agent task
 openconvene agent "deploy the app"
 ```
 
 > レスポンダーにはインストール済みの任意の CLI を使用できます：agy / codex / devin / grok / cursor / kimi / hermes / aider / opencode（最低 1 つ必要）。
+
+### 更新
+
+REPLで `/update` と入力すると、お使いのプラットフォーム用の更新コマンドが表示されます。またはインストールコマンドを再実行してください——最新バージョンで古いバイナリが上書きされます。
 
 ---
 
@@ -230,18 +265,6 @@ openconvene(ask)> /exit                       # exit REPL
 | [Configuration](Docs/04-Configuration.md) | 完全な `models.yaml` スキーマと例 |
 | [Examples](Docs/05-Examples.md) | 各モードの実践的な利用例 |
 | [Troubleshooting](Docs/06-Troubleshooting.md) | 一般的な問題と解決策 |
-
----
-
-## ソースからビルド
-
-```bash
-git clone https://github.com/masteryee-labs/open-convene-cli.git
-cd open-convene-cli
-go build -o openconvene ./cmd/openconvene
-```
-
-> 前提条件：Go 1.24+
 
 ---
 

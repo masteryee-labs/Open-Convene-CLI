@@ -25,7 +25,7 @@
 //	/clear, /new            Clear screen and reset session
 //	/compact                (stub) Summarize conversation to free tokens
 //	/resume, /continue      (stub) Resume a previous session
-//	/update                 (stub) Check and install updates
+//	/update                 Show update instructions (copy-paste install command)
 //	/exit, /quit, /q        Exit the REPL
 //
 // Usage tracking:
@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -50,6 +51,7 @@ import (
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 	"github.com/masteryee-labs/open-convene-cli/internal/convene"
 	"github.com/masteryee-labs/open-convene-cli/internal/mode"
+	"github.com/masteryee-labs/open-convene-cli/internal/version"
 	"github.com/reeflective/readline"
 	"github.com/reeflective/readline/inputrc"
 	"gopkg.in/yaml.v3"
@@ -583,8 +585,7 @@ func handleSlashCommand(s *replSession, line string) bool {
 		fmt.Println("  Usage: /resume [session-id]  or  /continue [session-id]")
 
 	case "/update":
-		fmt.Println("(stub) /update — self-update not yet implemented.")
-		fmt.Println("  To update manually: go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest")
+		handleUpdateCommand()
 
 	case "/exit", "/quit", "/q":
 		return true
@@ -622,7 +623,7 @@ Session & config:
   /config, /c, /settings  Show current configuration
   /detect, /d             Detect installed CLIs
   /resume, /continue      (stub) Resume a previous session
-  /update                 (stub) Check and install updates
+  /update                 Show update instructions
 
   Or type any text to run it as a prompt in the current mode.`)
 }
@@ -1263,4 +1264,43 @@ func stringToPtr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+// handleUpdateCommand shows the user how to update openconvene.
+// It detects the current OS and prints the appropriate install command
+// for the user to copy-paste into their shell after exiting the REPL.
+func handleUpdateCommand() {
+	fmt.Println("┌─────────────────────────────────────────────────────────────┐")
+	fmt.Println("│                       Update OpenConveneCLI                 │")
+	fmt.Println("└─────────────────────────────────────────────────────────────┘")
+	fmt.Println()
+	fmt.Printf("  Current version: %s\n", version.Version)
+	fmt.Println()
+	fmt.Println("  Please exit the REPL first (type /exit), then run the")
+	fmt.Println("  command below in your shell:")
+	fmt.Println()
+
+	switch runtime.GOOS {
+	case "windows":
+		fmt.Println("  PowerShell:")
+		fmt.Println()
+		fmt.Println("    irm https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.ps1 | iex")
+		fmt.Println()
+		fmt.Println("  Or with winget (if published):")
+		fmt.Println()
+		fmt.Println("    winget install openconvene")
+	case "darwin", "linux":
+		fmt.Println("  Bash / Zsh:")
+		fmt.Println()
+		fmt.Println("    curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash")
+		fmt.Println()
+		fmt.Println("  Or with Go (if installed):")
+		fmt.Println()
+		fmt.Println("    go install github.com/masteryee-labs/open-convene-cli/cmd/openconvene@latest")
+	default:
+		fmt.Println("  curl -fsSL https://raw.githubusercontent.com/masteryee-labs/open-convene-cli/main/install.sh | bash")
+	}
+
+	fmt.Println()
+	fmt.Println("  After installation, restart openconvene to use the new version.")
 }
