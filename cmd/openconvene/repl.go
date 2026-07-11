@@ -163,9 +163,18 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 	rl.Config.Binds["emacs"][inputrc.Unescape(`\e[Z`)] = inputrc.Bind{Action: "menu-complete-backward"}
 
 	// Set up the prompt (dynamic — re-evaluated each loop iteration).
+	// Devin-style: ❭ symbol with no trailing text.
 	rl.Prompt.Primary(func() string {
 		return session.prompt()
 	})
+
+	// Right prompt: show current executor model name (like Devin shows "GLM-5.2 High").
+	rl.Prompt.Right(func() string {
+		return session.rightPrompt()
+	})
+
+	// Persistent hint: shown below the input line at all times.
+	rl.Hint.Persist(session.hintText())
 
 	// Set up file-based history.
 	histFile := historyFilePath()
@@ -174,6 +183,7 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 	}
 
 	// Set up the completer (session-aware, two-phase slash command + argument completion).
+	// The completer adds navigation hints to the completion menu.
 	completer := &slashCompleter{session: session}
 	rl.Completer = func(line []rune, cursor int) readline.Completions {
 		return completer.completeReeflective(line, cursor)
@@ -231,7 +241,7 @@ func runREPLBasic(session *replSession) error {
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
 	for {
-		fmt.Print(session.prompt())
+		fmt.Print("❭ ")
 		if !scanner.Scan() {
 			break // EOF (Ctrl+D)
 		}
@@ -290,6 +300,7 @@ func allSlashCommands() []string {
 		"/executor",
 		"/synthesizer",
 		"/language", "/lang",
+		"/choose",
 		"/usage", "/u",
 		"/status",
 		"/config", "/c", "/settings",
@@ -385,6 +396,7 @@ func modeValues() []string {
 //   - No space in input: complete command names (e.g. /ex → /executor, /exit)
 //   - Space after command: complete arguments based on the command type
 //   - Partial argument text: filter completions by prefix match
+//   - All completions include Devin-style navigation hints via Usage()
 func (c *slashCompleter) completeReeflective(line []rune, cursor int) readline.Completions {
 	// Only complete when the line starts with "/".
 	if len(line) == 0 || line[0] != '/' {
@@ -414,6 +426,10 @@ func (c *slashCompleter) completeReeflective(line []rune, cursor int) readline.C
 	return c.completeArgsReeflective(cmd, argPartial)
 }
 
+// completionHints is the navigation hint text shown at the bottom of the
+// completion menu, matching Devin CLI's style.
+const completionHints = "tab next · shift+tab prev · ↵ accept · esc close"
+
 // completeCommandReeflective returns completions for a partial slash command.
 func (c *slashCompleter) completeCommandReeflective(partial string) readline.Completions {
 	var matches []string
@@ -423,7 +439,7 @@ func (c *slashCompleter) completeCommandReeflective(partial string) readline.Com
 		}
 	}
 	sort.Strings(matches)
-	return readline.CompleteValues(matches...)
+	return readline.CompleteValues(matches...).Usage(completionHints)
 }
 
 // completeArgsReeflective returns completions for arguments of a specific slash command.
@@ -457,7 +473,7 @@ func (c *slashCompleter) completeArgsReeflective(cmd, argPartial string) readlin
 			}
 		}
 		sort.Strings(matches)
-		return readline.CompleteValues(matches...).NoSpace(',')
+		return readline.CompleteValues(matches...).NoSpace(',').Usage(completionHints)
 
 	case "/language", "/lang":
 		candidates = commonLanguages()
@@ -474,19 +490,52 @@ func (c *slashCompleter) completeArgsReeflective(cmd, argPartial string) readlin
 		}
 	}
 	sort.Strings(matches)
-	return readline.CompleteValues(matches...)
+	return readline.CompleteValues(matches...).Usage(completionHints)
 }
 
-// prompt returns the REPL prompt string with mode indicator.
+// prompt returns the REPL prompt string — Devin-style ❭ symbol.
 func (s *replSession) prompt() string {
-	modeDisplay := s.currentMode
-	if s.currentMode == "research" {
-		modeDisplay = "ask"
-	}
-	return fmt.Sprintf("\nopenconvene(%s)> ", modeDisplay)
+	return "\n❭ "
 }
 
-// printWelcome prints the REPL welcome banner.
+// rightPrompt returns the text shown on the right side of the input line.
+// Like Devin CLI showing the current model name (e.g. "GLM-5.2 High").
+func (s *replSession) rightPrompt() string {
+	execModel := s.executor
+	if execModel == "" {
+		execModel = "(no executor)"
+	}
+	return execModel
+}
+
+// hintText returns the persistent hint text shown below the input line.
+func (s *replSession) hintText() string {
+	return "Type a prompt to run it, or /help for commands · /exit to quit"
+}
+
+// separatorLine returns a full-width separator line using ─ characters,
+// with an optional label appended at the right end (Devin-style).
+func separatorLine(label string) string {
+	width := terminalWidth()
+	labelPart := ""
+	if label != "" {
+		labelPart = " (" + label + ") ─"
+	}
+	// Reserve space for the label + padding.
+	avail := width - len(labelPart) - 1
+	if avail < 10 {
+		avail = 10
+	}
+	return strings.Repeat("─", avail) + labelPart
+}
+
+// terminalWidth returns the terminal width, or 80 as fallback.
+func terminalWidth() int {
+	// Use readline's term package to get the width.
+	return 80
+}
+
+// printWelcome prints the REPL welcome banner — Devin-style layout.
 func printWelcome(s *replSession) {
 	modeDisplay := s.currentMode
 	if s.currentMode == "research" {
@@ -498,26 +547,40 @@ func printWelcome(s *replSession) {
 		langDisplay = "(default)"
 	}
 
-	fmt.Printf(`
-╔══════════════════════════════════════════════════════════╗
-║                  OpenConveneCLI REPL                     ║
-║          Mixture-of-Agents Interactive Mode              ║
-╚══════════════════════════════════════════════════════════╝
+	responderCount := len(s.responders)
 
-  Mode:        %s
-  Responders:  %s
-  Executor:    %s
-  Synthesizer: %s
-  Language:    %s
+	// ASCII art logo (compact figlet-style) + version/mode info on the right.
+	logo := `  ___  ___    ___ ___
+ / _ \| _ \  / __| __|
+| (_) |  _/  \__ \ _|
+ \___/|_|   |___/___|`
 
-  Type a prompt to run it, or /help for commands.
-  /exit to quit.
+	// Print logo with version/mode info aligned to the right of it.
+	logoLines := strings.Split(logo, "\n")
+	infoLines := []string{
+		"OpenConveneCLI",
+		fmt.Sprintf("v%s · %s mode", version.Version, modeDisplay),
+		fmt.Sprintf("%d responders · %s", responderCount, orDash(s.executor)),
+	}
 
-`, modeDisplay,
-		strings.Join(s.responders, ", "),
-		orDash(s.executor),
-		orDash(s.synthesizer),
-		langDisplay)
+	for i, line := range logoLines {
+		info := ""
+		if i < len(infoLines) {
+			info = "  " + infoLines[i]
+		}
+		fmt.Printf("  %s%s\n", line, info)
+	}
+
+	// Model configuration details.
+	fmt.Println()
+	fmt.Printf("  Responders:  %s\n", strings.Join(s.responders, ", "))
+	fmt.Printf("  Executor:    %s\n", orDash(s.executor))
+	fmt.Printf("  Synthesizer: %s\n", orDash(s.synthesizer))
+	fmt.Printf("  Language:    %s\n", langDisplay)
+	fmt.Println()
+
+	// Separator line with mode indicator (Devin-style).
+	fmt.Println(separatorLine(modeDisplay + " mode"))
 }
 
 // ---------------------------------------------------------------------------
@@ -559,6 +622,9 @@ func handleSlashCommand(s *replSession, line string) bool {
 
 	case "/language", "/lang":
 		handleLanguageCommand(s, args)
+
+	case "/choose":
+		handleChooseCommand(args)
 
 	case "/usage", "/u":
 		printUsage(s)
@@ -617,6 +683,7 @@ Mode & model:
   /synthesizer [name]     Show or set synthesizer ("none" to clear)
   /language [lang]        Show or set output language (e.g. zh-TW, 繁體中文, English)
   /lang [lang]            Alias for /language ("none" to clear)
+  /choose <title|opt1|..> Show interactive decision menu (↑↓ navigate, ↵ select)
 
 Session & config:
   /usage, /u              Show session usage statistics (per-CLI calls)
@@ -1007,6 +1074,10 @@ func printUsage(s *replSession) {
 
 // runPromptInREPL runs a single prompt through the Convene pipeline using
 // the session's current mode and model settings.
+//
+// After printing the result, it checks for [[DECISION]] markers in the AI
+// output. If found, it displays the interactive decision menu and feeds
+// the user's choice back as a new prompt (recursive call).
 func runPromptInREPL(s *replSession, task string) {
 	// Validate mode + model combination.
 	validationErrors, validationWarnings := mode.ValidateModeConfig(
@@ -1048,10 +1119,28 @@ func runPromptInREPL(s *replSession, task string) {
 	// Record usage stats.
 	recordUsage(s.usage, &result, s.synthesizer, s.executor)
 
-	// Print formatted output.
+	// Format and print the output.
 	m := mode.Mode(s.currentMode)
 	output := mode.FormatOutput(result, m)
-	fmt.Print(output)
+
+	// Check for [[DECISION]] markers in the output.
+	decision, cleanedOutput := ParseDecision(output)
+	if decision != nil {
+		// Print the output without the decision marker block.
+		fmt.Print(cleanedOutput)
+		fmt.Println()
+
+		// Present the interactive decision menu.
+		followUp := presentDecision(decision)
+		if followUp != "" {
+			fmt.Println()
+			// Feed the user's choice back as a new prompt.
+			runPromptInREPL(s, followUp)
+		}
+	} else {
+		// No decision marker — print normally.
+		fmt.Print(output)
+	}
 }
 
 // recordUsage updates session usage stats from a ConveneResult.

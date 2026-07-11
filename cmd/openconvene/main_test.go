@@ -595,7 +595,7 @@ func TestCLINoArgsShowsHelp(t *testing.T) {
 	assert.NoError(t, err)
 	// Should show the REPL welcome banner.
 	assert.Contains(t, output, "OpenConveneCLI")
-	assert.Contains(t, output, "REPL")
+	assert.Contains(t, output, "mode")
 }
 
 // ---------------------------------------------------------------------------
@@ -745,8 +745,8 @@ func TestREPLWelcomeBanner(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Contains(t, output, "OpenConveneCLI")
-	assert.Contains(t, output, "REPL")
-	assert.Contains(t, output, "Mode:")
+	assert.Contains(t, output, "mode")
+	assert.Contains(t, output, "Responders:")
 }
 
 func TestREPLAskModeBanner(t *testing.T) {
@@ -895,7 +895,7 @@ func TestREPLQuitAlias(t *testing.T) {
 		[]string{"--config", configPath}, "/quit\n")
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "REPL")
+	assert.Contains(t, output, "OpenConveneCLI")
 }
 
 func TestREPLRunPromptThenUsage(t *testing.T) {
@@ -935,7 +935,7 @@ func TestREPLQuitShortcut(t *testing.T) {
 		[]string{"--config", configPath}, "/q\n")
 
 	require.NoError(t, err)
-	assert.Contains(t, output, "REPL")
+	assert.Contains(t, output, "OpenConveneCLI")
 }
 
 // ---------------------------------------------------------------------------
