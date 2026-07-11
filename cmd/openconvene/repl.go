@@ -152,7 +152,7 @@ func runREPL(initialMode string, cfg *config.ConveneConfig, configPath string) e
 		Prompt:                 session.prompt(),
 		HistoryFile:            historyFilePath(),
 		HistoryLimit:           500,
-		AutoComplete:           &slashCompleter{},
+		AutoComplete:           &slashCompleter{session: session},
 		InterruptPrompt:        "^C",
 		EOFPrompt:              "exit",
 		HistorySearchFold:      true,
@@ -256,20 +256,19 @@ func historyFilePath() string {
 // ---------------------------------------------------------------------------
 
 // slashCompleter implements readline.AutoCompleter for / commands.
-type slashCompleter struct{}
+// It supports two-phase completion:
+//   - Phase 1: completing the command name (e.g. /ex → /executor, /exit)
+//   - Phase 2: completing arguments after the command (e.g. /executor d → devin, devin:glm-5.2)
+//
+// The completer is session-aware: it reads model names from the session's config
+// to provide relevant argument completions.
+type slashCompleter struct {
+	session *replSession
+}
 
-// Complete returns completions for the given input line.
-func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
-	// Only complete when the line starts with "/".
-	if len(line) == 0 || line[0] != '/' {
-		return nil, 0
-	}
-
-	// Get the partial command being typed.
-	partial := string(line[:pos])
-
-	// All slash commands and aliases.
-	commands := []string{
+// allSlashCommands returns every slash command and alias recognized by the REPL.
+func allSlashCommands() []string {
+	return []string{
 		"/help", "/h", "/?",
 		"/models", "/m",
 		"/detect", "/d",
@@ -287,24 +286,198 @@ func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int)
 		"/update",
 		"/exit", "/quit", "/q",
 	}
+}
 
+// commandsWithArgs maps each command (and aliases) to whether it accepts arguments
+// that can be tab-completed. Commands not in this map either take no arguments
+// or take free-form text (no meaningful completion).
+var commandsWithArgs = map[string]bool{
+	"/mode":        true,
+	"/responders":  true,
+	"/executor":    true,
+	"/synthesizer": true,
+	"/language":    true,
+	"/lang":        true,
+}
+
+// modelNamesForCompletion returns all model names available for completion.
+// This includes keys from the config's models map plus any dynamic model names
+// currently in use (responders, executor, synthesizer).
+func (c *slashCompleter) modelNamesForCompletion() []string {
+	seen := make(map[string]bool)
+	var names []string
+
+	// Add models from config.
+	if c.session != nil && c.session.cfg != nil {
+		for name := range c.session.cfg.Models {
+			if !seen[name] {
+				seen[name] = true
+				names = append(names, name)
+			}
+		}
+		// Add current responders/executor/synthesizer (may be dynamic names).
+		for _, r := range c.session.responders {
+			if r != "" && !seen[r] {
+				seen[r] = true
+				names = append(names, r)
+			}
+		}
+		if c.session.executor != "" && !seen[c.session.executor] {
+			seen[c.session.executor] = true
+			names = append(names, c.session.executor)
+		}
+		if c.session.synthesizer != "" && !seen[c.session.synthesizer] {
+			seen[c.session.synthesizer] = true
+			names = append(names, c.session.synthesizer)
+		}
+	}
+
+	// Add some common dynamic model prefixes so users get hints.
+	// These are commonly used CLI:model format names.
+	commonDynamic := []string{
+		"devin:glm-5.2", "devin:swe-1.7", "devin:kimi-k2.7",
+		"agy:gemini-3.5-flash", "agy:gemini-3.5-pro",
+		"grok:grok-4.5", "codex:gpt-5",
+	}
+	for _, d := range commonDynamic {
+		if !seen[d] {
+			seen[d] = true
+			names = append(names, d)
+		}
+	}
+
+	sort.Strings(names)
+	return names
+}
+
+// commonLanguages returns commonly used language values for /language completion.
+func commonLanguages() []string {
+	return []string{
+		"zh-TW", "zh-CN", "繁體中文", "简体中文",
+		"English", "日本語", "한국어", "Français", "Deutsch", "Español",
+		"none",
+	}
+}
+
+// modeValues returns valid mode values for /mode completion.
+func modeValues() []string {
+	return []string{"ask", "code", "agent"}
+}
+
+// Do implements readline.AutoCompleter. It returns completions for the given
+// input line at position pos.
+//
+// Behavior:
+//   - No space in input: complete command names (e.g. /ex → /executor, /exit)
+//   - Space after command: complete arguments based on the command type
+//   - Partial argument text: filter completions by prefix match
+func (c *slashCompleter) Do(line []rune, pos int) (newLine [][]rune, length int) {
+	// Only complete when the line starts with "/".
+	if len(line) == 0 || line[0] != '/' {
+		return nil, 0
+	}
+
+	input := string(line[:pos])
+
+	// Find the first space — it separates command from arguments.
+	spaceIdx := strings.Index(input, " ")
+
+	if spaceIdx == -1 {
+		// Phase 1: completing the command name itself (no space typed yet).
+		return c.completeCommand(input)
+	}
+
+	// Phase 2: completing arguments after the command.
+	cmd := strings.ToLower(input[:spaceIdx])
+	argPartial := input[spaceIdx+1:]
+
+	// Check if this command supports argument completion.
+	if !commandsWithArgs[cmd] {
+		return nil, 0
+	}
+
+	return c.completeArgs(cmd, argPartial)
+}
+
+// completeCommand returns completions for a partial slash command (no space yet).
+func (c *slashCompleter) completeCommand(partial string) ([][]rune, int) {
 	var matches []string
-	for _, cmd := range commands {
+	for _, cmd := range allSlashCommands() {
 		if strings.HasPrefix(cmd, partial) {
 			matches = append(matches, cmd)
 		}
 	}
 
-	// Convert matches to [][]rune for readline.
-	newLine = make([][]rune, len(matches))
+	result := make([][]rune, len(matches))
 	for i, m := range matches {
-		// readline expects the completion to be the part AFTER the common prefix.
-		// length is the number of characters from the cursor that should be replaced.
-		newLine[i] = []rune(m)
+		result[i] = []rune(m)
 	}
-	length = pos
+	return result, len(partial)
+}
 
-	return newLine, length
+// completeArgs returns completions for arguments of a specific slash command.
+// argPartial is the text after the space (may be empty for "show all options").
+func (c *slashCompleter) completeArgs(cmd, argPartial string) ([][]rune, int) {
+	var candidates []string
+
+	switch cmd {
+	case "/mode":
+		candidates = modeValues()
+
+	case "/executor":
+		candidates = c.modelNamesForCompletion()
+
+	case "/synthesizer":
+		candidates = c.modelNamesForCompletion()
+		// "none" is a special value to clear the synthesizer.
+		candidates = append(candidates, "none")
+
+	case "/responders":
+		// /responders takes comma-separated model names.
+		// We complete the last segment after the last comma.
+		lastComma := strings.LastIndex(argPartial, ",")
+		segmentStart := lastComma + 1
+		segment := argPartial[segmentStart:]
+		prefix := argPartial[:segmentStart]
+
+		allModels := c.modelNamesForCompletion()
+		var matches []string
+		for _, m := range allModels {
+			if strings.HasPrefix(m, segment) {
+				matches = append(matches, m)
+			}
+		}
+
+		// Build full completions: prefix + matched model name.
+		result := make([][]rune, len(matches))
+		for i, m := range matches {
+			result[i] = []rune(prefix + m)
+		}
+		return result, len(argPartial)
+
+	case "/language", "/lang":
+		candidates = commonLanguages()
+
+	default:
+		return nil, 0
+	}
+
+	// Filter candidates by prefix match against argPartial.
+	var matches []string
+	for _, cand := range candidates {
+		if strings.HasPrefix(cand, argPartial) {
+			matches = append(matches, cand)
+		}
+	}
+
+	// Sort for consistent display order.
+	sort.Strings(matches)
+
+	result := make([][]rune, len(matches))
+	for i, m := range matches {
+		result[i] = []rune(m)
+	}
+	return result, len(argPartial)
 }
 
 // prompt returns the REPL prompt string with mode indicator.
@@ -467,7 +640,11 @@ func handleModeCommand(s *replSession, args []string) {
 			display = "ask"
 		}
 		fmt.Printf("Current mode: %s\n", display)
-		fmt.Println("Available: ask, code, agent")
+		fmt.Println("Available options:")
+		fmt.Println("  ask    — research mode (no execution, analysis only)")
+		fmt.Println("  code   — code mode (with execution, writes code)")
+		fmt.Println("  agent  — agent mode (with execution, long-running agent tasks)")
+		fmt.Println("Usage: /mode <ask|code|agent>  (or press Tab after /mode )")
 		return
 	}
 
@@ -490,6 +667,10 @@ func handleModeCommand(s *replSession, args []string) {
 func handleRespondersCommand(s *replSession, args []string) {
 	if len(args) == 0 {
 		fmt.Printf("Current responders: %s\n", strings.Join(s.responders, ", "))
+		fmt.Println("Available models (press Tab after /responders to auto-complete):")
+		printAvailableModels(s)
+		fmt.Println("Usage: /responders <model1,model2,...>  (comma-separated)")
+		fmt.Println("  Tip: you can also use dynamic model names like devin:glm-5.2")
 		return
 	}
 
@@ -518,6 +699,10 @@ func handleRespondersCommand(s *replSession, args []string) {
 func handleExecutorCommand(s *replSession, args []string) {
 	if len(args) == 0 {
 		fmt.Printf("Current executor: %s\n", orDash(s.executor))
+		fmt.Println("Available models (press Tab after /executor to auto-complete):")
+		printAvailableModels(s)
+		fmt.Println("Usage: /executor <model-name>")
+		fmt.Println("  Tip: you can also use dynamic model names like devin:glm-5.2")
 		return
 	}
 	name := strings.TrimSpace(args[0])
@@ -537,6 +722,11 @@ func handleExecutorCommand(s *replSession, args []string) {
 func handleSynthesizerCommand(s *replSession, args []string) {
 	if len(args) == 0 {
 		fmt.Printf("Current synthesizer: %s\n", orDash(s.synthesizer))
+		fmt.Println("Available models (press Tab after /synthesizer to auto-complete):")
+		printAvailableModels(s)
+		fmt.Println("Special: /synthesizer none  (clear → executor doubles as synthesizer)")
+		fmt.Println("Usage: /synthesizer <model-name|none>")
+		fmt.Println("  Tip: you can also use dynamic model names like devin:glm-5.2")
 		return
 	}
 	name := strings.TrimSpace(args[0])
@@ -561,8 +751,11 @@ func handleLanguageCommand(s *replSession, args []string) {
 		} else {
 			fmt.Printf("Current language: %s\n", s.language)
 		}
-		fmt.Println("  Usage: /language <lang>  (e.g. zh-TW, 繁體中文, English, 日本語)")
-		fmt.Println("         /language none    (clear language preference)")
+		fmt.Println("Available options (press Tab after /language to auto-complete):")
+		fmt.Println("  zh-TW, zh-CN, 繁體中文, 简体中文")
+		fmt.Println("  English, 日本語, 한국어, Français, Deutsch, Español")
+		fmt.Println("  none  (clear language preference)")
+		fmt.Println("Usage: /language <lang>  (or any custom language string)")
 		return
 	}
 
@@ -618,6 +811,33 @@ func printStatus(s *replSession) {
 // ---------------------------------------------------------------------------
 // /models, /detect, /config, /usage — display commands
 // ---------------------------------------------------------------------------
+
+// printAvailableModels prints a compact list of model names available for
+// /executor, /synthesizer, and /responders commands. Used when those commands
+// are called without arguments to show the user what they can pick.
+func printAvailableModels(s *replSession) {
+	if len(s.cfg.Models) == 0 {
+		fmt.Println("  (no models in config — use dynamic names like devin:glm-5.2)")
+		return
+	}
+
+	names := make([]string, 0, len(s.cfg.Models))
+	for name := range s.cfg.Models {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	// Print in a compact multi-column format.
+	const cols = 4
+	for i := 0; i < len(names); i += cols {
+		end := i + cols
+		if end > len(names) {
+			end = len(names)
+		}
+		row := names[i:end]
+		fmt.Printf("  %s\n", strings.Join(row, ", "))
+	}
+}
 
 func printModelsInREPL(s *replSession) {
 	if len(s.cfg.Models) == 0 {
