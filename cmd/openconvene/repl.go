@@ -300,6 +300,7 @@ func allSlashCommands() []string {
 		"/executor",
 		"/synthesizer",
 		"/language", "/lang",
+		"/lane",
 		"/choose",
 		"/usage", "/u",
 		"/status",
@@ -623,6 +624,9 @@ func handleSlashCommand(s *replSession, line string) bool {
 	case "/language", "/lang":
 		handleLanguageCommand(s, args)
 
+	case "/lane":
+		handleLaneCommand(s)
+
 	case "/choose":
 		handleChooseCommand(args)
 
@@ -683,6 +687,7 @@ Mode & model:
   /synthesizer [name]     Show or set synthesizer ("none" to clear)
   /language [lang]        Show or set output language (e.g. zh-TW, 繁體中文, English)
   /lang [lang]            Alias for /language ("none" to clear)
+  /lane                   Show lane routing configuration and built-in lanes
   /choose <title|opt1|..> Show interactive decision menu (↑↓ navigate, ↵ select)
 
 Session & config:
@@ -847,6 +852,38 @@ func handleLanguageCommand(s *replSession, args []string) {
 			fmt.Fprintf(os.Stderr, "  (warning: could not save language to config: %v)\n", err)
 		}
 	}
+}
+
+// handleLaneCommand shows the lane routing configuration and status.
+func handleLaneCommand(s *replSession) {
+	enabled := convene.LaneRoutingEnabled(s.cfg, false)
+	if enabled {
+		fmt.Println("Lane routing: enabled (tasks are classified into lanes before model selection)")
+	} else {
+		fmt.Println("Lane routing: disabled (using static responders/executor)")
+	}
+	fmt.Println()
+	fmt.Println("Built-in lanes:")
+	for _, lane := range convene.AllLanes() {
+		desc := convene.LaneDescription(lane)
+		// Show per-lane override if configured.
+		if laneCfg, ok := s.cfg.Lanes[string(lane)]; ok {
+			extras := []string{}
+			if len(laneCfg.Responders) > 0 {
+				extras = append(extras, "responders: "+strings.Join(laneCfg.Responders, ","))
+			}
+			if laneCfg.Executor != "" {
+				extras = append(extras, "executor: "+laneCfg.Executor)
+			}
+			if len(extras) > 0 {
+				desc += "  [override: " + strings.Join(extras, "; ") + "]"
+			}
+		}
+		fmt.Printf("  %-18s — %s\n", lane, desc)
+	}
+	fmt.Println()
+	fmt.Println("Disable with: --no-lane flag, or set lane_routing: false in models.yaml")
+	fmt.Println("Configure per-lane models in the lanes: section of models.yaml")
 }
 
 // printStatus shows a concise session status (like Codex's /status).
@@ -1103,17 +1140,27 @@ func runPromptInREPL(s *replSession, task string) {
 		synthPtr = &s.synthesizer
 	}
 
-	// Run Convene.
+	// Run Convene via the agentic outer loop (P0).
 	fmt.Fprintf(os.Stderr, "Running in %s mode with responders [%s]...\n",
 		s.currentMode, strings.Join(s.responders, ", "))
 
 	ctx := context.Background()
 	engine := convene.NewConveneEngine(s.cfg)
 
-	result, err := engine.Run(ctx, task, s.currentMode, s.responders, s.executor, synthPtr)
+	maxIter := convene.ResolveMaxIterations(s.cfg.Defaults.MaxIterations, 0)
+	loopResult, err := engine.ConveneLoop(ctx, task, s.currentMode, s.responders, s.executor, synthPtr, maxIter)
+	result := loopResult.FinalResult
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "ERROR: %v\n", err)
 		return
+	}
+
+	// Print loop summary if more than one iteration ran.
+	if loopResult.Iterations > 1 {
+		fmt.Fprintf(os.Stderr, "\n=== Agentic Loop Summary ===\n")
+		fmt.Fprintf(os.Stderr, "Iterations: %d\n", loopResult.Iterations)
+		fmt.Fprintf(os.Stderr, "Stop reason: %s\n", loopResult.StopReason)
+		fmt.Fprintf(os.Stderr, "Total elapsed: %s\n", loopResult.TotalElapsed)
 	}
 
 	// Record usage stats.

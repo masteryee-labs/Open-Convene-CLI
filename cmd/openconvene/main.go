@@ -54,6 +54,18 @@ import (
 // ---------------------------------------------------------------------------
 
 func main() {
+	// No-nested-dispatch guard (P2, omnilane-inspired): if this process was
+	// spawned by another openconvene (OPENCONVENE_DEPTH > 0), refuse to run.
+	// This prevents runaway agent-calls-agent quota chains where an executor
+	// CLI re-invokes openconvene, which spawns more executors, etc.
+	if depth := adapter.CurrentDispatchDepth(); depth > adapter.MaxDispatchDepth {
+		fmt.Fprintf(os.Stderr,
+			"openconvene: refusing to run — nested dispatch detected (OPENCONVENE_DEPTH=%d). "+
+				"An executor CLI tried to re-invoke openconvene. "+
+				"Run openconvene directly from your shell, not from inside another agent.\n", depth)
+		os.Exit(86)
+	}
+
 	rootCmd := buildRootCmd()
 	if err := rootCmd.Execute(); err != nil {
 		// cobra prints the error to stderr automatically; just exit non-zero.
@@ -131,6 +143,12 @@ func addConveneFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("json", false, "Output result as JSON (for scripting/automation)")
 	// --language: override output language for model responses.
 	cmd.Flags().String("language", "", "Output language for model responses (e.g. zh-TW, 繁體中文, English)")
+	// --max-iterations: agentic outer loop cap (P0). 0 = config/default (5), 1 = single-shot.
+	cmd.Flags().Int("max-iterations", 0, "Agentic loop cap: re-dispatch until [[DONE]]/judge-complete or this limit (0=default 5, 1=single-shot)")
+	// --no-lane: disable lane classification routing (P1).
+	cmd.Flags().Bool("no-lane", false, "Disable task-classification lane routing (use static responders/executor)")
+	// --vote: use arbitrate voting panel instead of single-synthesizer reasoning (P3).
+	cmd.Flags().Bool("vote", false, "Use multi-model voting panel for synthesis (overrides config synthesis_mode)")
 	// Hidden --task flag for backward compatibility with the old `run` command.
 	// New usage prefers positional args: openconvene "task"
 	cmd.Flags().String("task", "", "Task description (positional arg preferred; use '-' for stdin)")
@@ -469,11 +487,51 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 		fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
 	}
 
-	// --- 5. Execute Convene flow ---
+	// --- 5. Apply --vote override (P3) ---
+	voteFlag, _ := cmd.Flags().GetBool("vote")
+	if voteFlag {
+		cfg.Defaults.SynthesisMode = "vote"
+	}
+
 	ctx := context.Background()
+
+	// --- 5b. Lane classification routing (P1) ---
+	noLane, _ := cmd.Flags().GetBool("no-lane")
+	laneEnabled := convene.LaneRoutingEnabled(cfg, noLane)
+	if laneEnabled && modeStr != "research" {
+		engine := convene.NewConveneEngine(cfg)
+		lane, err := engine.ClassifyLane(ctx, task, responders, executor, cfg.Defaults.Timeout)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "WARNING: lane classification failed (%v); using static model selection\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Lane: %s — %s\n", lane, convene.LaneDescription(lane))
+			sel := convene.ResolveLane(lane, cfg)
+			responders = sel.Responders
+			executor = sel.Executor
+			synthesizer = sel.Synthesizer
+			// Re-validate with the lane-selected models.
+			validationErrors, validationWarnings := mode.ValidateModeConfig(
+				m, responders, executor, synthesizer, cfg.Models)
+			for _, e := range validationErrors {
+				fmt.Fprintf(os.Stderr, "ERROR: %s\n", e)
+			}
+			if len(validationErrors) > 0 {
+				return fmt.Errorf("lane-selected model config failed validation with %d error(s)", len(validationErrors))
+			}
+			for _, w := range validationWarnings {
+				fmt.Fprintf(os.Stderr, "WARNING: %s\n", w)
+			}
+		}
+	}
+
+	// --- 6. Execute Convene flow via agentic outer loop (P0) ---
 	engine := convene.NewConveneEngine(cfg)
 
-	result, err := engine.Run(ctx, task, modeStr, responders, executor, synthesizer)
+	maxIter, _ := cmd.Flags().GetInt("max-iterations")
+	maxIter = convene.ResolveMaxIterations(cfg.Defaults.MaxIterations, maxIter)
+
+	loopResult, err := engine.ConveneLoop(ctx, task, modeStr, responders, executor, synthesizer, maxIter)
+	result := loopResult.FinalResult
 	if err != nil {
 		// Even on error, print verbose metadata if requested (helps debug failures).
 		verbose, _ := cmd.Flags().GetBool("verbose")
@@ -492,7 +550,15 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 		return fmt.Errorf("convene run failed: %w", err)
 	}
 
-	// --- 6. Format and print output ---
+	// Print loop summary (iterations + stop reason) to stderr.
+	if loopResult.Iterations > 1 || (loopResult.StopReason != "single-shot" && loopResult.StopReason != "") {
+		fmt.Fprintf(os.Stderr, "\n=== Agentic Loop Summary ===\n")
+		fmt.Fprintf(os.Stderr, "Iterations: %d\n", loopResult.Iterations)
+		fmt.Fprintf(os.Stderr, "Stop reason: %s\n", loopResult.StopReason)
+		fmt.Fprintf(os.Stderr, "Total elapsed: %s\n", loopResult.TotalElapsed)
+	}
+
+	// --- 7. Format and print output ---
 	jsonOutput, _ := cmd.Flags().GetBool("json")
 	if jsonOutput {
 		// JSON output mode (aligned with Grok --output-format json).
@@ -506,7 +572,7 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 		fmt.Print(output)
 	}
 
-	// --- 7. Verbose: raw responses + metadata to stderr ---
+	// --- 8. Verbose: raw responses + metadata to stderr ---
 	verbose, _ := cmd.Flags().GetBool("verbose")
 	if verbose {
 		fmt.Fprintln(os.Stderr, "\n=== VERBOSE OUTPUT ===")
@@ -533,6 +599,15 @@ func runConvene(cmd *cobra.Command, args []string, modeStr string) error {
 			sort.Strings(keys)
 			for _, k := range keys {
 				fmt.Fprintf(os.Stderr, "[metadata] %s: %v\n", k, result.Metadata[k])
+			}
+		}
+
+		// Print all iteration results for auditability.
+		if len(loopResult.AllResults) > 1 {
+			fmt.Fprintf(os.Stderr, "\n--- All Iterations (%d) ---\n", len(loopResult.AllResults))
+			for i, r := range loopResult.AllResults {
+				fmt.Fprintf(os.Stderr, "\n[Iteration %d] mode=%s, responses=%d\n",
+					i+1, r.Mode, len(r.Responses))
 			}
 		}
 	}

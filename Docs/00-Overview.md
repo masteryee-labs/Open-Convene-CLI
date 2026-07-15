@@ -1,6 +1,6 @@
 # 00 — OpenConveneCLI 概覽
 
-> **版本**：v1.0（S1 架構 Session 產出）
+> **版本**：v1.2（v1.0 架構 Session + v1.2 agentic loop / lane routing / arbitrate panel）
 > **語言**：Go >= 1.24
 > **Module**：`github.com/masteryee-labs/open-convene-cli`
 
@@ -85,20 +85,27 @@ OpenConveneCLI 相對於 Fusion / MoA 的獨特之處：
 2. **read-only 分層**：明確區分 respond（read-only，只回答）與 execute（可執行工具）。responder 只做 read-only，executor 才執行。這讓多模型「腦力激盪」與「動手執行」安全分離。
 3. **三模式工作流**：research（只研究不執行）、code（寫碼改檔）、agent（長時間 agent 任務），對應開發者真實需求，而非學術基準。
 4. **跨平台本機部署**：單一 Go 二進位，Windows / Linux / macOS 通吃，無雲端依賴。
+5. **Agentic Outer Loop（v1.2）**：引擎不再「執行一步就停」。ConveneLoop 包住單趟 MoA pipeline，自動重派直到任務完成。完成度判斷採雙機制：executor 輸出 `[[DONE]]` marker（顯式）+ judge 模型判斷（隱式）。到達 `--max-iterations` 上限（預設 5）也停。這讓 OpenConveneCLI 跟一般 CLI 一樣「執行到任務結束」。
+6. **Lane 分類路由（v1.2，omnilane-inspired）**：執行前先用一個輕量分類器把任務歸入 6 個 lane（hardest-coding / bulk-mechanical / triage / taste-final / long-context / live-search），再依 lane 選最適的 responders/executor。預設開啟，`--no-lane` 可關。
+7. **Fallback Chain 降級（v1.2，omnilane-inspired）**：每個模型可配置 `fallback:` 鏈。模型沒裝或 adapter 建立失敗時，自動走鏈中下一個。單一訂閱也能跑。
+8. **Self-execute 去重（v1.2，omnilane-inspired）**：若某 responder 同時是 executor，在 code/agent 模式跳過該 responder 的冗餘 Respond 呼叫，省 quota 且避免綜合偏見。
+9. **No-nested-dispatch Guard（v1.2，omnilane-inspired）**：透過 `OPENCONVENE_DEPTH` 環境變數防止 executor CLI 再叫 openconvene 形成無限遞迴（exit 86）。
+10. **Arbitrate 投票面板（v1.2，omnilane-inspired）**：synthesizer 可選傳統推理綜合（`reasoning`，預設）或多模型投票面板（`vote`）。投票模式把問題派給 1-4 個 voter，可選辯論回合，再由 chair 模型統整判決。
 
 ---
 
 ## 4. 三種模式速覽
 
-| 模式 | 指令 | 流程 | 執行？ | 典型用途 |
-|------|------|------|--------|---------|
-| `research`（ask） | `openconvene ask "task"` | N responder → synthesizer → **印出結論** | ✗ 不執行 | 技術調研、方案比較、腦力激盪 |
-| `code`（預設） | `openconvene "task"` | N responder → synthesizer（可選）→ **executor 寫碼/改檔** | ✓ 寫碼 | 實作功能、修 bug、重構 |
-| `agent` | `openconvene agent "task"` | N responder 出策略 → synthesizer 整合 → **executor agent 長時間執行** | ✓ agent | 複雜多步任務、自動化管線 |
+| 模式 | 指令 | 流程 | 執行？ | Loop？ | 典型用途 |
+|------|------|------|--------|-------|---------|
+| `research`（ask） | `openconvene ask "task"` | lane 分類 → N responder → synthesizer → **印出結論** | ✗ 不執行 | ✗ 單趟 | 技術調研、方案比較、腦力激盪 |
+| `code`（預設） | `openconvene "task"` | lane 分類 → N responder → synthesizer（可選）→ **executor 寫碼/改檔** → loop 重派 | ✓ 寫碼 | ✓ 自動 | 實作功能、修 bug、重構 |
+| `agent` | `openconvene agent "task"` | lane 分類 → N responder → synthesizer 整合 → **executor agent 執行** → loop 重派 | ✓ agent | ✓ 自動 | 複雜多步任務、自動化管線 |
 
+> **Agentic Loop（v1.2）**：code/agent 模式下，引擎自動重派直到完成（`[[DONE]]` marker 或 judge 判完成）或到達 `--max-iterations`（預設 5）。research 模式不跑 loop。
 > 三種模式不帶 task 參數時均進入互動式 REPL：`openconvene`、`openconvene ask`、`openconvene agent`。
-> REPL 支援 fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋（Ctrl-R）、`/language` 設定模型回應語言。
-> synthesizer 為可選：不指定時，executor 兼任 synthesizer（直接讀 N 份回應後執行）。
+> REPL 支援 fish-style menu-complete（Tab 列選單 + 上下鍵導航）、增量歷史搜尋（Ctrl-R）、`/language` 設定模型回應語言、`/lane` 查看路由設定。
+> synthesizer 為可選：不指定時，executor 兼任 synthesizer（直接讀 N 份回應後執行）。`--vote` 或 `synthesis_mode: vote` 改用多模型投票面板。
 > 若無 `models.yaml`，首次啟動自動生成預設 config（使用動態模型名 `devin:glm-5.2` 等）。
 
 ---

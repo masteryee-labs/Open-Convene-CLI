@@ -37,6 +37,27 @@ defaults:
   language: ""                      # string — 模型回應語言（空 = 不指定）
                                     #   例: "zh-TW", "繁體中文", "English"
                                     #   只影響模型輸出，CLI UI 保持英文
+  # --- v1.2 新增 ---
+  lane_routing: true                # *bool — 是否啟用 lane 分類路由（預設 true）
+  synthesis_mode: "reasoning"       # string — "reasoning"（預設）| "vote"
+  vote_voters: []                   # []string — vote 模式的 voter 模型名（空 = 用 responders）
+  vote_rounds: 1                    # int — vote 模式辯論回合數（1=單輪，2=辯論）
+  max_iterations: 0                 # int — agentic loop 上限（0=預設 5，1=單趟）
+
+# --- Lane 覆寫（v1.2，可選）---
+# 當 lane_routing 啟用且某 lane key 存在於此，其 responders/executor 覆寫 defaults。
+# 空 = 用內建預設分配。
+lanes:
+  hardest-coding:
+    responders: ["codex", "devin:glm-5.2"]
+    executor: "codex"
+    synthesizer: null
+    description: "Hardest implementation, deep root-cause debug"
+  bulk-mechanical:
+    responders: ["agy", "grok"]
+    executor: "aider"
+    description: "Refactors, migrations, tests, review sweeps"
+  # 其餘 lane（triage/taste-final/long-context/live-search）未列 = 用 defaults
 
 # --- 模型配置（map: name → ModelConfig）---
 models:
@@ -55,6 +76,10 @@ models:
     executor_capable: bool          # bool — 是否能當 executor（agentic 執行）
     extra_args: list[str]           # []string — 額外 CLI 參數
                                     #   例: ["--model", "gpt-4o"]（aider 用）
+    fallback: list[str]             # []string — fallback chain（v1.2）
+                                    #   模型沒裝或 adapter 建立失敗時，依序嘗試鏈中下一個
+                                    #   例: ["codex", "devin:glm-5.2"]
+                                    #   cycle-safe（visited-set 防無限遞迴）
 ```
 
 ### 欄位型別對應
@@ -66,6 +91,15 @@ models:
 | `defaults.executor` | `DefaultsConfig.Executor` | `string` | `executor` | 否 |
 | `defaults.synthesizer` | `DefaultsConfig.Synthesizer` | `*string` | `synthesizer` | 否（nil = 兼任） |
 | `defaults.language` | `DefaultsConfig.Language` | `string` | `language` | 否（空 = 不指定） |
+| `defaults.lane_routing` | `DefaultsConfig.LaneRouting` | `*bool` | `lane_routing` | 否（nil = 預設 true） |
+| `defaults.synthesis_mode` | `DefaultsConfig.SynthesisMode` | `string` | `synthesis_mode` | 否（空 = reasoning） |
+| `defaults.vote_voters` | `DefaultsConfig.VoteVoters` | `[]string` | `vote_voters` | 否（空 = 用 responders） |
+| `defaults.vote_rounds` | `DefaultsConfig.VoteRounds` | `int` | `vote_rounds` | 否（0 = 1） |
+| `defaults.max_iterations` | `DefaultsConfig.MaxIterations` | `int` | `max_iterations` | 否（0 = 預設 5） |
+| `lanes.<lane>.responders` | `LaneConfig.Responders` | `[]string` | `responders` | 否（空 = 用 defaults） |
+| `lanes.<lane>.executor` | `LaneConfig.Executor` | `string` | `executor` | 否（空 = 用 defaults） |
+| `lanes.<lane>.synthesizer` | `LaneConfig.Synthesizer` | `*string` | `synthesizer` | 否（nil = 用 defaults） |
+| `lanes.<lane>.description` | `LaneConfig.Description` | `string` | `description` | 否（/lane 顯示用） |
 | `models.<name>`（map key） | `ModelConfig.Name` | `string` | `-`（不解析） | ★由 factory 填入 |
 | `models.<name>.command` | `ModelConfig.Command` | `string` | `command` | ★是（必須含 {prompt}） |
 | `models.<name>.execute_command` | `ModelConfig.ExecuteCommand` | `string` | `execute_command` | 否（空 = 用 command） |
@@ -73,6 +107,7 @@ models:
 | `models.<name>.timeout` | `ModelConfig.Timeout` | `int` | `timeout` | 否（用 defaults） |
 | `models.<name>.executor_capable` | `ModelConfig.ExecutorCapable` | `bool` | `executor_capable` | 否（預設 false） |
 | `models.<name>.extra_args` | `ModelConfig.ExtraArgs` | `[]string` | `extra_args` | 否 |
+| `models.<name>.fallback` | `ModelConfig.Fallback` | `[]string` | `fallback` | 否（v1.2） |
 
 > ★`Name` 欄位 `yaml:"-"`：不從 YAML 解析。`LoadConfig` 解析後，factory 用 map key 填入 `cfg.Models["agy"].Name = "agy"`。
 

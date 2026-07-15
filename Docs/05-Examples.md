@@ -572,3 +572,213 @@ Language cleared — models will use their default language.
 - `--language` flag 只影響當次執行，不寫回 config
 - 引擎在 task 前注入 `[Please respond in zh-TW.]` 指令
 - 接受的值：`zh-TW`、`繁體中文`、`English`、`日本語` 等任意字串
+
+---
+
+## 範例 15：Agentic Outer Loop — 自動重派直到完成（v1.2）
+
+### 場景
+
+你給一個多步任務：「fix all failing tests in pkg/foo」。v1.1 引擎只跑一趟就停，常只修了一部分。v1.2 的 agentic loop 會自動重派直到完成。
+
+### 命令
+
+```bash
+# 預設：自動 loop，最多 5 趟
+openconvene "fix all failing tests in pkg/foo"
+
+# 限制最多 3 趟
+openconvene "refactor the auth module into pkg/auth" --max-iterations 3
+
+# 單趟（回到 v1.1 行為，適合明確單步任務）
+openconvene "explain what pkg/foo does" --max-iterations 1
+```
+
+### 流程
+
+```
+[iter 1] lane classify → responders → synthesis → executor 寫碼
+         → executor 輸出無 [[DONE]] → judge 問「完成了嗎？」
+         → judge 答「還有 2 個 test 沒修，下一步：修 TestBar」
+[iter 2] task = "修 TestBar" → responders → synthesis → executor 寫碼
+         → executor 輸出含 [[DONE]] → loop 停止
+```
+
+### 預期輸出（stderr）
+
+```
+Lane: bulk-mechanical — Refactors, migrations, tests, review sweeps
+
+=== Agentic Loop Summary ===
+Iterations: 2
+Stop reason: done-marker
+Total elapsed: 1m42s
+```
+
+### 說明
+
+- 完成度判斷採雙機制：顯式 `[[DONE]]` marker（executor 主動放）+ 隱式 judge（synthesizer 或 executor 判）
+- judge 判未完成時，其「下一步」描述成為下一趟的 task
+- research 模式不跑 loop（無 execution phase）
+- `--max-iterations 1` 等同 v1.1 單趟行為
+
+---
+
+## 範例 16：Lane 分類路由（v1.2）
+
+### 場景
+
+不同任務適合不同模型組合。lane routing 自動分類任務並選模型。
+
+### 命令
+
+```bash
+# 引擎自動分類
+openconvene "migrate the DB schema from v1 to v2"
+# → Lane: bulk-mechanical（用 lanes.bulk-mechanical 的 responders/executor）
+
+openconvene "debug the intermittent segfault in worker pool"
+# → Lane: hardest-coding（用 lanes.hardest-coding 的 responders/executor）
+
+openconvene "polish the README intro paragraph"
+# → Lane: taste-final
+
+# 關閉 lane routing
+openconvene "fix the bug" --no-lane
+
+# REPL 內查看 lane 設定
+/lane
+```
+
+### Config 範例（per-lane 覆寫）
+
+```yaml
+defaults:
+  responders: ["agy", "grok"]
+  executor: "codex"
+
+lanes:
+  hardest-coding:
+    responders: ["codex", "devin:glm-5.2"]
+    executor: "codex"
+    description: "Hardest implementation, deep root-cause debug"
+  bulk-mechanical:
+    responders: ["agy", "grok"]
+    executor: "aider"
+    description: "Refactors, migrations, tests"
+```
+
+### 說明
+
+- 分類器是第一個 responder（或 executor 若無 responder），做一次輕量 read-only 呼叫
+- 分類失敗 fallback 到 `hardest-coding`（最能力的超集）
+- 未在 `lanes:` 段覆寫的 lane 用 `defaults` 的 responders/executor
+- `--no-lane` 或 `lane_routing: false` 可關閉
+
+---
+
+## 範例 17：Fallback Chain — 單一訂閱也能跑（v1.2）
+
+### 場景
+
+你只裝了 `devin` CLI，但 config 裡 `codex` 是預設 executor。v1.2 的 fallback chain 讓 `codex` 自動降級到 `devin:glm-5.2`。
+
+### Config 範例
+
+```yaml
+models:
+  codex:
+    command: 'codex exec "{prompt}"'
+    execute_command: 'codex exec --sandbox workspace-write "{prompt}"'
+    read_only: "maybe"
+    executor_capable: true
+    fallback: ["devin:glm-5.2"]    # codex 沒裝 → 用 devin 跑 glm-5.2
+
+  agy:
+    command: 'agy -p "{prompt}"'
+    fallback: ["devin:gemini-3.5-flash"]  # agy 沒裝 → 用 devin 跑 gemini
+```
+
+### 流程
+
+```
+resolveWithFallback("codex", "executor")
+  → codex adapter 建立失敗（CLI 沒裝）
+  → 走 fallback 鏈：["devin:glm-5.2"]
+  → devin:glm-5.2 adapter 建立成功 → 用它當 executor
+  → stderr 印 "executor codex: fell back to devin:glm-5.2"
+```
+
+### 說明
+
+- fallback 鏈 cycle-safe（visited-set 防兩模型互相 fallback 形成無限遞迴）
+- responder、synthesizer、executor 三個角色都走 fallback chain
+- 鏈中每個候選也可有自己的 fallback（遞迴，但 visited-set 防環）
+
+---
+
+## 範例 18：Arbitrate 投票面板（v1.2）
+
+### 場景
+
+設計 API contract 這類有爭議的任務，單一 synthesizer 的推理綜合可能不夠。投票面板讓多個 voter 各自獨立回答，再由 chair 統整判決。
+
+### 命令
+
+```bash
+# CLI flag 覆寫（單次）
+openconvene ask "design the REST API contract for the billing service" --vote
+
+# config 永久設定
+# models.yaml:
+#   defaults:
+#     synthesis_mode: vote
+#     vote_voters: [agy, grok, codex]
+#     vote_rounds: 2
+```
+
+### 流程
+
+```
+[Phase 1] 3 responders 各自回答 task
+[Phase 2] arbitrate panel:
+  Round 1: 3 voters（agy/grok/codex）各自看 responder 回應後獨立判決
+  Round 2（vote_rounds=2）: 3 voters 看到 round 1 全部判決，反駁分歧點
+  Chair（synthesizer，或第一個 voter）統整 → 最終判決
+[Phase 3] research 模式：印出 chair 判決
+```
+
+### 說明
+
+- voter 失敗不中斷面板，chair 用收到的意見統整
+- 全部 voter 失敗才 fallback 到 nil synthesis（executor 讀原始回應）
+- voter 名稱在 prompt 中匿名化（Voter A/B/C）防偏心
+- `vote_rounds: 1` = 單輪（各自獨立），`2` = 辯論回合
+
+---
+
+## 範例 19：No-nested-dispatch Guard（v1.2）
+
+### 場景
+
+某個 executor CLI（如 devin）在被 openconvene 呼叫時，可能會在 agentic loop 中再叫 `openconvene`，形成無限遞迴燒 quota。v1.2 的 guard 阻止這件事。
+
+### 機制
+
+1. openconvene 啟動時檢查 `OPENCONVENE_DEPTH` 環境變數。頂層 = 0。
+2. openconvene 呼叫任何 executor CLI 時，注入 `OPENCONVENE_DEPTH=<當前+1>` 到子進程環境。
+3. 若該子進程（或其後代）再執行 `openconvene`，新 openconvene 看到 depth ≥ 1，拒絕執行（exit 86）。
+
+### 預期輸出（被擋下的子 openconvene）
+
+```
+openconvene: refusing to run — nested dispatch detected (OPENCONVENE_DEPTH=1).
+An executor CLI tried to re-invoke openconvene.
+Run openconvene directly from your shell, not from inside another agent.
+```
+
+### 說明
+
+- 這是安全護欄，不影響正常使用（頂層 openconvene depth = 0，正常跑）
+- 防止 agent-calls-agent 的 quota鏈爆炸
+- exit code 86 是刻意選的（不與常見 error code 衝突）

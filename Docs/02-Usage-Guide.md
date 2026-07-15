@@ -242,6 +242,90 @@ openconvene agent "deploy the app" --language 繁體中文
 
 設定後語言會**持久化到 `models.yaml`**，跨 session 保留。引擎會在 task 前注入 `[Please respond in <lang>.]` 指令，所有 responders、synthesizer、executor 都會以該語言回應。
 
+### Agentic Outer Loop（v1.2）
+
+code/agent 模式下，引擎不再「執行一步就停」。`ConveneLoop` 包住單趟 MoA pipeline，自動重派直到任務完成：
+
+```bash
+# 預設：自動 loop，最多 5 趟
+openconvene "fix the failing tests in pkg/foo"
+
+# 限制最多 3 趟
+openconvene "refactor the auth module" --max-iterations 3
+
+# 單趟（回到 v1.1 行為，適合 research 或明確單步任務）
+openconvene "explain this function" --max-iterations 1
+```
+
+**完成度判斷（雙機制）**：
+1. **顯式 `[[DONE]]` marker**：executor 在輸出中放 `[[DONE]]` 區塊表示任務完成，loop 立即停止。
+2. **隱式 judge**：無 marker 時，judge 模型（synthesizer，或 executor 若無 synthesizer）被問「任務完成了嗎？若否，下一步是什麼？」。判完成→停；判未完成→把下一步當新 task 重派。
+
+**停止條件**（任一）：`[[DONE]]` marker / judge 判完成 / 到達 `--max-iterations` / Ctrl+C。
+
+Loop 結束後 stderr 印摘要：
+```
+=== Agentic Loop Summary ===
+Iterations: 3
+Stop reason: done-marker
+Total elapsed: 2m15s
+```
+
+`--verbose` 會額外印每趟 iteration 的 mode 與 response 數量。
+
+### Lane 分類路由（v1.2）
+
+執行前引擎先用一個輕量分類器（第一個 responder，或 executor 若無 responder）把任務歸入 6 個 lane，再依 lane 選最適的 responders/executor：
+
+| Lane | 適用任務 |
+|------|---------|
+| `hardest-coding` | 深度根因 debug、正確性關鍵改動 |
+| `bulk-mechanical` | 重構、遷移、寫測試、review sweep |
+| `triage` | 大量掃描、首輪過濾 |
+| `taste-final` | 面向使用者的文句、文件潤飾、prompt 工程 |
+| `long-context` | 大上下文綜合（唯讀分析） |
+| `live-search` | 即時網頁/社群搜尋 |
+
+```bash
+# 預設：lane routing 開啟
+openconvene "migrate the DB schema"   # → lane: bulk-mechanical
+
+# 關閉 lane routing，用靜態 responders/executor
+openconvene "fix the bug" --no-lane
+
+# REPL 內查看 lane 設定
+/lane
+```
+
+分類失敗時 fallback 到 `hardest-coding`（最能力的超集）。每個 lane 可在 `models.yaml` 的 `lanes:` 段覆寫模型選擇（見 04-Configuration）。
+
+### Arbitrate 投票面板（v1.2）
+
+synthesizer 階段可選兩種綜合策略：
+
+- **`reasoning`（預設）**：單一 synthesizer 做推理式整合（傳統 MoA 行為）。
+- **`vote`**：問題派給 1-4 個 voter 各自獨立回答，可選辯論回合（round 2），再由 chair 模型統整判決。
+
+```bash
+# CLI flag 覆寫
+openconvene "design the API contract" --vote
+
+# config 永久設定
+# models.yaml:
+#   defaults:
+#     synthesis_mode: vote
+#     vote_voters: [agy, grok, codex]
+#     vote_rounds: 2
+```
+
+投票面板容錯：單一 voter 失敗不中斷，chair 用收到的意見統整。全部 voter 失敗才 fallback 到 nil synthesis（executor 讀原始回應）。
+
+### Fallback Chain 與 Self-execute 去重（v1.2）
+
+- **Fallback chain**：模型沒裝或 adapter 建立失敗時，自動走 `fallback:` 鏈中下一個。配置見 04-Configuration。
+- **Self-execute 去重**：若某 responder 同時是 executor，在 code/agent 模式跳過該 responder 的冗餘 Respond 呼叫（executor 會在 Phase 3 產出，不必先 Respond 一次）。
+- **No-nested-dispatch guard**：引擎透過 `OPENCONVENE_DEPTH` 環境變數防止 executor CLI 再叫 openconvene 形成無限遞迴。若偵測到 nested dispatch，exit 86。
+
 ### Slash Commands
 
 | Command | Aliases | Description | Aligned with |
@@ -254,6 +338,7 @@ openconvene agent "deploy the app" --language 繁體中文
 | `/executor [name]` | | Show or set executor（可用動態模型名） | OpenConvene unique |
 | `/synthesizer [name]` | | Show or set synthesizer (`none` to clear；可用動態模型名) | OpenConvene unique |
 | `/language [lang]` | `/lang` | Show or set output language（如 `zh-TW`、`繁體中文`、`English`；`none` 清除） | OpenConvene unique |
+| `/lane` | | Show lane routing configuration and built-in lanes | OpenConvene v1.2 |
 | `/usage` | `/u` | Show session usage statistics (per-CLI calls) | agy |
 | `/config` | `/c`, `/settings` | Show current configuration summary | agy |
 | `/detect` | `/d` | Detect installed CLIs | OpenConvene unique |
@@ -277,6 +362,9 @@ openconvene agent "deploy the app" --language 繁體中文
 | `--config <path>` | Specify config path | OpenConvene unique |
 | `--timeout <sec>` | Override timeout | OpenConvene unique |
 | `--verbose` | Show raw responses and metadata | OpenConvene unique |
+| `--max-iterations <N>` | Agentic loop cap (0=default 5, 1=single-shot) | OpenConvene v1.2 |
+| `--no-lane` | Disable task-classification lane routing | OpenConvene v1.2 |
+| `--vote` | Use multi-model voting panel for synthesis | OpenConvene v1.2 |
 | `--` | Separator (add before prompt) | Devin |
 
 ### Usage Tracking

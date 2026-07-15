@@ -47,6 +47,14 @@ type ModelConfig struct {
 	// ExtraArgs holds additional CLI arguments appended to the command
 	// (e.g. ["--model", "gpt-4o"] for aider).
 	ExtraArgs []string `yaml:"extra_args"`
+
+	// Fallback is the ordered list of model names to try when this model's
+	// CLI is not installed or its adapter cannot be created. The engine walks
+	// the chain and uses the first candidate that resolves successfully.
+	// Each entry may itself have its own Fallback chain (recursion is bounded
+	// by a visited-set to prevent cycles). Empty = no fallback (current behavior).
+	// Example: fallback: [codex, devin:glm-5.2]
+	Fallback []string `yaml:"fallback"`
 }
 
 // DefaultsConfig holds the default values applied when the CLI does not
@@ -75,6 +83,39 @@ type DefaultsConfig struct {
 	// This only affects model output language — CLI UI (slash commands, help
 	// text, error messages) remains in English.
 	Language string `yaml:"language"`
+
+	// LaneRouting enables task-classification lane routing (omnilane-inspired).
+	// When true (default), the engine classifies the task into a lane
+	// (hardest-coding, bulk-mechanical, triage, taste-final, long-context,
+	// live-search) and selects responders/executor accordingly.
+	// Set to false to use the static responders/executor lists above.
+	LaneRouting *bool `yaml:"lane_routing"`
+
+	// SynthesisMode selects the synthesis strategy.
+	// "reasoning" (default) = single synthesizer performs reasoning-based
+	//   integration (current MoA behavior).
+	// "vote" = arbitrate panel: the question goes to 1-4 voter models,
+	//   opinions come back side by side, and a chair model assembles the
+	//   verdict (omnilane-inspired arbitrate lane).
+	SynthesisMode string `yaml:"synthesis_mode"`
+
+	// VoteVoters is the list of voter model names used when SynthesisMode ==
+	// "vote". Each voter answers the task independently. If empty, the
+	// responders list is reused as voters.
+	VoteVoters []string `yaml:"vote_voters"`
+
+	// VoteRounds is the number of debate rounds for the arbitrate panel.
+	// 1 (default) = single round, each voter answers independently.
+	// 2 = voters see all round-1 opinions and rebut only disagreements.
+	VoteRounds int `yaml:"vote_rounds"`
+
+	// MaxIterations is the upper bound for the agentic outer loop
+	// (P0). The loop re-dispatches the task until the executor emits a
+	// [[DONE]] marker, a judge model declares the task complete, or this
+	// limit is reached. 0 = use the built-in default (5). 1 = single-shot
+	// (disables the loop, preserving the pre-loop behavior for research mode
+	// or explicit single-run use).
+	MaxIterations int `yaml:"max_iterations"`
 }
 
 // ConveneConfig is the top-level configuration for OpenConveneCLI.
@@ -86,4 +127,31 @@ type ConveneConfig struct {
 
 	// Defaults holds the default responder/executor/synthesizer/timeout values.
 	Defaults DefaultsConfig `yaml:"defaults"`
+
+	// Lanes holds optional per-lane model overrides. When LaneRouting is
+	// enabled and a lane key is present here, its responders/executor take
+	// priority over Defaults. Keys are lane names (hardest-coding,
+	// bulk-mechanical, triage, taste-final, long-context, live-search).
+	// Empty = use built-in default lane assignments.
+	Lanes map[string]LaneConfig `yaml:"lanes"`
+}
+
+// LaneConfig holds the model selection for a single routing lane.
+// A lane is a task category (omnilane-inspired) that maps to a preferred
+// set of responders and an executor.
+type LaneConfig struct {
+	// Responders is the list of responder model names for this lane.
+	// If empty, the engine falls back to Defaults.Responders.
+	Responders []string `yaml:"responders"`
+
+	// Executor is the executor model name for this lane.
+	// If empty, the engine falls back to Defaults.Executor.
+	Executor string `yaml:"executor"`
+
+	// Synthesizer is the synthesizer model name for this lane (optional).
+	// nil = use Defaults.Synthesizer.
+	Synthesizer *string `yaml:"synthesizer"`
+
+	// Description is a human-readable hint shown in /lane output.
+	Description string `yaml:"description"`
 }

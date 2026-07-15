@@ -1,6 +1,6 @@
 # 01 — 系統架構
 
-> **版本**：v1.0（S1 架構 Session 產出）
+> **版本**：v1.2（v1.0 架構 Session + v1.2 agentic loop / lane routing / fallback / arbitrate）
 > **Module**：`github.com/masteryee-labs/open-convene-cli`
 > **語言**：Go >= 1.24
 
@@ -12,12 +12,23 @@
                             ┌─────────────────────────────────────────────┐
                             │            openconvene (cobra)              │
                             │           cmd/openconvene/main.go            │
+                            │  [nested-dispatch guard: OPENCONVENE_DEPTH]  │
                             └────────────────────┬────────────────────────┘
                                                  │ parse flags + load config
                                                  ▼
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                         internal/convene (引擎層)                            │
 │                                                                              │
+│   ┌──────────────┐  lane classify (1 responder call)                         │
+│   │ lane.go      │──── ClassifyLane(task) ──► Lane (hardest-coding/...)      │
+│   │              │──── ResolveLane(lane, cfg) ──► responders/executor/synth  │
+│   └──────┬───────┘                                                            │
+│          ▼                                                                   │
+│   ┌──────────────┐  ◄── agentic outer loop (ConveneLoop) ──┐                 │
+│   │ loop.go      │     repeat until [[DONE]] / judge-done   │                 │
+│   │              │     / max-iterations / canceled           │                 │
+│   └──────┬───────┘                                            │                 │
+│          ▼  (each iteration = one Run)                        │                 │
 │   ┌──────────────┐    fan-out (goroutines)    ┌───────────────────────────┐  │
 │   │ ConveneEngine │───────┬──────────┬────────►│  Adapter A (agy)         │  │
 │   │  .Run()       │       │          │         │  Adapter B (grok)        │  │
@@ -26,28 +37,33 @@
 │   │  (collect)   │   AdapterResult.Stdout     │  (read-only / respond)   │  │
 │   └──────┬───────┘                            └───────────────────────────┘  │
 │          │ responses: map[name]string                                       │
+│          │ [self-execute dedup: skip responder==executor]                    │
+│          │ [fallback chain: model not installed → next in chain]             │
 │          ▼                                                                   │
-│   ┌──────────────┐    synthesizer (optional)   ┌───────────────────────────┐ │
-│   │ prompts.go   │──── BuildSynthesisPrompt ──►│  Synthesizer Adapter      │ │
-│   │              │◄── synthesis text ──────────┤  (read-only / respond)    │ │
+│   ┌──────────────┐  synthesizer (optional)    ┌───────────────────────────┐ │
+│   │ prompts.go / │──── reasoning synthesis ──►│  Synthesizer Adapter      │ │
+│   │ arbitrate.go │──── OR vote panel ────────►│  (1-4 voters + chair)     │ │
+│   │              │◄── synthesis text ─────────┤  (read-only / respond)    │ │
 │   └──────┬───────┘                            └───────────────────────────┘ │
 │          │ synthesis: *string  (nil = executor 兼任)                        │
 │          ▼                                                                   │
 │   ┌──────────────┐    executor                ┌───────────────────────────┐ │
 │   │ prompts.go   │──── BuildExecPrompt ──────►│  Executor Adapter          │ │
 │   │              │◄── execution result ───────┤  (agentic / execute)       │ │
+│   │              │                            │  [env: OPENCONVENE_DEPTH+1]│ │
 │   └──────┬───────┘                            └───────────────────────────┘ │
 │          │                                                                   │
 │          ▼                                                                   │
-│   ┌──────────────┐                                                            │
-│   │ ConveneResult│  → FormatOutput (internal/mode) → stdout                  │
-│   └──────────────┘                                                            │
+│   ┌──────────────┐    [[DONE]] marker? ────► stop loop                       │
+│   │ ConveneResult│    else: judge model ──► COMPLETE? stop / next-step loop  │
+│   └──────────────┘  → FormatOutput (internal/mode) → stdout                  │
 └──────────────────────────────────────────────────────────────────────────────┘
 
                             ┌─────────────────────┐
                             │  internal/config     │
                             │  models.yaml → struct│
                             │  ConveneConfig       │
+                            │  + Lanes / Fallback  │
                             └─────────────────────┘
 ```
 
@@ -94,9 +110,13 @@ open-convene-cli/
 │   │   ├── factory.go           # GetAdapter factory function
 │   │   └── detect.go            # DetectAvailableAdapters（偵測 9 個 CLI）
 │   ├── convene/
-│   │   ├── engine.go            # ConveneEngine（goroutines fan-out + synthesis + execution）
+│   │   ├── engine.go            # ConveneEngine.Run：fan-out + synthesis + execution
 │   │   ├── result.go            # ConveneResult struct
-│   │   └── prompts.go           # BuildSynthesisPrompt / BuildExecPrompt + 模板常數
+│   │   ├── prompts.go           # BuildSynthesisPrompt / BuildExecPrompt + 模板常數
+│   │   ├── loop.go              # ConveneLoop：agentic outer loop（[[DONE]] + judge）
+│   │   ├── lane.go              # Lane 分類路由（6 lanes + ClassifyLane + ResolveLane）
+│   │   ├── fallback.go          # resolveWithFallback：fallback chain 降級
+│   │   └── arbitrate.go         # ArbitratePanel：多模型投票面板（vote mode）
 │   └── mode/
 │       └── mode.go              # Mode type + FormatOutput + ValidateModeConfig
 ├── config/
@@ -121,9 +141,14 @@ open-convene-cli/
 | `adapter` | `*.go`（9 個） | 各 CLI adapter 實作 | S2 |
 | `adapter` | `factory.go` | `GetAdapter(name, cfg) → Adapter` | S2 |
 | `adapter` | `detect.go` | `DetectAvailableAdapters() → []string`（exec.LookPath） | S2 |
-| `convene` | `engine.go` | ConveneEngine.Run：fan-out + synthesis + execution | S3 |
+| `convene` | `engine.go` | ConveneEngine.Run：fan-out + synthesis + execution（含 self-execute dedup、fallback 整合） | S3 + v1.2 |
 | `convene` | `result.go` | ConveneResult struct | S3 |
 | `convene` | `prompts.go` | BuildSynthesisPrompt / BuildExecPrompt + 模板常數 | S3 |
+| `convene` | `loop.go` | ConveneLoop：agentic outer loop（[[DONE]] marker + judge 完成度 + 自動重派） | **v1.2** |
+| `convene` | `lane.go` | Lane 分類路由（6 lanes + ClassifyLane + ResolveLane） | **v1.2** |
+| `convene` | `fallback.go` | resolveWithFallback：fallback chain 降級（cycle-safe） | **v1.2** |
+| `convene` | `arbitrate.go` | ArbitratePanel：多模型投票面板（vote mode，1-2 rounds + chair） | **v1.2** |
+| `adapter` | `adapter.go` | Adapter interface + RunCommand + OPENCONVENE_DEPTH 注入 | S2 + v1.2 |
 | `mode` | `mode.go` | Mode 型別 + FormatOutput + ValidateModeConfig | S4 |
 | `cmd` | `main.go` | cobra CLI entry point | S4 |
 

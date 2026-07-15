@@ -176,24 +176,29 @@ func (e *ConveneEngine) Run(
 	// run in parallel goroutines.
 	prepared := make([]preparedResponder, 0, len(responders))
 	for _, name := range responders {
-		// Check if the model exists in config, or try dynamic resolution.
-		modelCfg, exists := e.Config.Models[name]
-		if !exists {
-			// Try dynamic resolution: "CLI-模型名" format (e.g. "agy-Gemini 3.5 Flash (High)")
-			dynCfg, _, dynOk := adapter.ResolveDynamicModel(name)
-			if !dynOk {
-				warnings = append(warnings, fmt.Sprintf(
-					"responder %s: not found in config models and not a dynamic model name, skipping", name))
-				continue
-			}
-			modelCfg = dynCfg
+		// Self-execute dedup (P2): if this responder is the same as the
+		// executor and we're in code/agent mode, skip the redundant Respond
+		// call — the executor will produce its own output in Phase 3, so
+		// calling it twice wastes a quota call and biases the synthesis
+		// toward the executor's own response.
+		if (mode == "code" || mode == "agent") && name == executor {
+			warnings = append(warnings, fmt.Sprintf(
+				"self-execute: skipped redundant responder call for %s "+
+					"(it is also the executor)", name))
+			continue
 		}
 
-		a, err := e.adapterFactory(name, modelCfg)
-		if err != nil {
-			warnings = append(warnings, fmt.Sprintf(
-				"responder %s: adapter creation failed: %v", name, err))
+		// Resolve the model, walking the fallback chain if the primary is
+		// unavailable (P1). resolveWithFallback returns the first model in
+		// the chain that resolves to a usable adapter.
+		a, resolvedName, modelCfg, fbNote := e.resolveWithFallback(name, "responder", warnings)
+		if a == nil {
+			warnings = fbNote
 			continue // Fault tolerance: skip this responder, don't abort.
+		}
+		if resolvedName != name {
+			warnings = append(warnings, fmt.Sprintf(
+				"responder %s: fell back to %s", name, resolvedName))
 		}
 
 		// Validate read-only support. Responders MUST be read-only to prevent
@@ -202,7 +207,7 @@ func (e *ConveneEngine) Run(
 			warnings = append(warnings, fmt.Sprintf(
 				"responder %s is not truly read-only (read_only=%q), "+
 					"may cause side-effects during fan-out",
-				name, modelCfg.ReadOnly))
+				resolvedName, modelCfg.ReadOnly))
 		}
 
 		// Per-model timeout, fallback to defaults.
@@ -212,7 +217,7 @@ func (e *ConveneEngine) Run(
 		}
 
 		prepared = append(prepared, preparedResponder{
-			name:    name,
+			name:    resolvedName,
 			adapter: a,
 			timeout: t,
 		})
@@ -313,27 +318,46 @@ func (e *ConveneEngine) Run(
 	var synthesis *string
 	if synthesizer != nil {
 		synthName := *synthesizer
-		synthCfg, exists := e.Config.Models[synthName]
-		if !exists {
-			// Try dynamic resolution: "CLI-模型名" format
-			dynCfg, _, dynOk := adapter.ResolveDynamicModel(synthName)
-			if !dynOk {
-				metadata["synthesizer_error"] = fmt.Sprintf(
-					"synthesizer %s: not found in config models and not a dynamic model name", synthName)
-				synthesis = nil
-			} else {
-				synthCfg = dynCfg
-			}
-		}
 
-		// Only proceed if we have a valid config (either from config or dynamic).
-		if synthCfg.Command != "" {
-			synthAdapter, err := e.adapterFactory(synthName, synthCfg)
-			if err != nil {
+		// P3: arbitrate panel (vote mode) — alternative to single-synthesizer
+		// reasoning. When synthesis_mode == "vote", the question goes to a
+		// panel of voters and a chair assembles the verdict.
+		if e.Config.Defaults.SynthesisMode == "vote" {
+			voters := e.Config.Defaults.VoteVoters
+			rounds := e.Config.Defaults.VoteRounds
+			if rounds < 1 {
+				rounds = 1
+			}
+			verdict, arbMeta, arbErr := e.ArbitratePanel(ctx, task, responses,
+				voters, synthName, rounds, e.Config.Defaults.Timeout)
+			if arbErr != nil {
 				metadata["synthesizer_error"] = fmt.Sprintf(
-					"adapter creation failed: %v", err)
+					"arbitrate panel failed: %v", arbErr)
 				synthesis = nil // Fallback: no synthesis (don't abort).
 			} else {
+				synthesis = &verdict
+				metadata["synthesizer_success"] = true
+				metadata["synthesis_mode"] = "vote"
+				// Merge arbitrate metadata.
+				for k, v := range arbMeta {
+					metadata[k] = v
+				}
+			}
+		} else {
+			// Default: single-synthesizer reasoning-based integration.
+			synthAdapter, resolvedSynth, synthCfg, fbNote := e.resolveWithFallback(
+				synthName, "synthesizer", warnings)
+			warnings = fbNote
+			if synthAdapter == nil {
+				metadata["synthesizer_error"] = fmt.Sprintf(
+					"synthesizer %s: adapter creation failed (no fallback)", synthName)
+				synthesis = nil
+			} else {
+				if resolvedSynth != synthName {
+					warnings = append(warnings, fmt.Sprintf(
+						"synthesizer %s: fell back to %s", synthName, resolvedSynth))
+					metadata["synthesizer_fallback"] = resolvedSynth
+				}
 				synthesisPrompt := BuildSynthesisPrompt(task, responses)
 
 				// Per-model timeout, fallback to defaults.
@@ -389,60 +413,59 @@ func (e *ConveneEngine) Run(
 		execution = nil
 
 	case "code", "agent":
-		execCfg, exists := e.Config.Models[executor]
-		if !exists {
-			// Try dynamic resolution: "CLI-模型名" format
-			dynCfg, _, dynOk := adapter.ResolveDynamicModel(executor)
-			if !dynOk {
-				metadata["executor_error"] = fmt.Sprintf(
-					"executor %s: not found in config models and not a dynamic model name", executor)
-				// execution stays nil.
-				execCfg = config.ModelConfig{} // ensure empty
-			} else {
-				execCfg = dynCfg
+		// Resolve the executor, walking the fallback chain if the primary
+		// is unavailable (P1).
+		execAdapter, resolvedExec, execCfg, fbNote := e.resolveWithFallback(
+			executor, "executor", warnings)
+		warnings = fbNote
+		if execAdapter == nil {
+			// Use the last fallback warning as the error detail (it explains
+			// why resolution failed: "not found", "adapter creation failed", etc.).
+			detail := "adapter creation failed (no fallback)"
+			if len(warnings) > 0 {
+				detail = warnings[len(warnings)-1]
 			}
-		}
+			metadata["executor_error"] = fmt.Sprintf(
+				"executor %s: %s", executor, detail)
+			// execution stays nil.
+		} else {
+			if resolvedExec != executor {
+				warnings = append(warnings, fmt.Sprintf(
+					"executor %s: fell back to %s", executor, resolvedExec))
+				metadata["executor_fallback"] = resolvedExec
+			}
+			// Build the executor prompt from task + synthesis (or raw responses).
+			execPrompt := BuildExecPrompt(task, synthesis, responses, mode)
 
-		if execCfg.Command != "" {
-			execAdapter, err := e.adapterFactory(executor, execCfg)
-			if err != nil {
-				metadata["executor_error"] = fmt.Sprintf(
-					"adapter creation failed: %v", err)
-				// execution stays nil.
+			// Per-model timeout, fallback to defaults.
+			t := execCfg.Timeout
+			if t <= 0 {
+				t = e.Config.Defaults.Timeout
+			}
+
+			// synthesisContext: the synthesis string value (empty if nil).
+			// The adapter's Execute receives this but the prompt already
+			// contains the synthesis/responses — synthesisContext is
+			// supplementary context passed through to the CLI.
+			var synthCtx string
+			if synthesis != nil {
+				synthCtx = *synthesis
+			}
+
+			execStart := time.Now()
+			execResult, err := execAdapter.Execute(ctx, execPrompt, t, synthCtx)
+			metadata["executor_elapsed"] = time.Since(execStart)
+
+			if err == nil && execResult.Success {
+				// Use execOut (not e) to avoid shadowing receiver e *ConveneEngine.
+				execOut := execResult.Stdout
+				execution = &execOut
+				metadata["executor_success"] = true
 			} else {
-				// Build the executor prompt from task + synthesis (or raw responses).
-				execPrompt := BuildExecPrompt(task, synthesis, responses, mode)
-
-				// Per-model timeout, fallback to defaults.
-				t := execCfg.Timeout
-				if t <= 0 {
-					t = e.Config.Defaults.Timeout
-				}
-
-				// synthesisContext: the synthesis string value (empty if nil).
-				// The adapter's Execute receives this but the prompt already
-				// contains the synthesis/responses — synthesisContext is
-				// supplementary context passed through to the CLI.
-				var synthCtx string
-				if synthesis != nil {
-					synthCtx = *synthesis
-				}
-
-				execStart := time.Now()
-				execResult, err := execAdapter.Execute(ctx, execPrompt, t, synthCtx)
-				metadata["executor_elapsed"] = time.Since(execStart)
-
-				if err == nil && execResult.Success {
-					// Use execOut (not e) to avoid shadowing receiver e *ConveneEngine.
-					execOut := execResult.Stdout
-					execution = &execOut
-					metadata["executor_success"] = true
-				} else {
-					// Executor failed — record in metadata, execution stays nil.
-					metadata["executor_success"] = false
-					metadata["executor_failed"] = fmt.Sprintf(
-						"err=%v stderr=%s", err, execResult.Stderr)
-				}
+				// Executor failed — record in metadata, execution stays nil.
+				metadata["executor_success"] = false
+				metadata["executor_failed"] = fmt.Sprintf(
+					"err=%v stderr=%s", err, execResult.Stderr)
 			}
 		}
 

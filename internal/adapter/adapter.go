@@ -24,11 +24,27 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/masteryee-labs/open-convene-cli/internal/config"
 )
+
+// DepthEnvVar is the environment variable used to guard against nested
+// OpenConvene dispatch (omnilane-inspired no-nested-dispatch safety rail).
+//
+// When OpenConvene spawns an executor CLI (devin/codex/agy/...), it injects
+// OPENCONVENE_DEPTH=<current+1> into the child environment. If that child
+// (or any descendant) invokes openconvene again, the CLI checks this var at
+// startup and refuses to run (exit 86), preventing runaway agent-calls-agent
+// quota chains.
+const DepthEnvVar = "OPENCONVENE_DEPTH"
+
+// MaxDispatchDepth is the hard cap on nesting. Even depth 1 is refused (the
+// top-level openconvene process has depth 0; any child that re-invokes
+// openconvene sees depth >= 1).
+const MaxDispatchDepth = 1
 
 // AdapterResult is the return value of every adapter call.
 //
@@ -245,6 +261,11 @@ func RunCommand(ctx context.Context, cmdStr string, timeout int) (AdapterResult,
 		cmd = exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	}
 	setProcessGroupAttr(cmd)
+
+	// Inject OPENCONVENE_DEPTH=<current+1> into the child environment so that
+	// any descendant that re-invokes openconvene is refused (no-nested-dispatch
+	// guard). If the var is absent (top-level process), the child sees depth 1.
+	cmd.Env = childEnvWithBumpedDepth()
 
 	// Set stdin to the parent's stdin. This allows pipe-based command templates
 	// (e.g. "type {prompt_file} | codex exec") to work — the shell (cmd/sh)
@@ -497,4 +518,45 @@ func shellEscape(s string) string {
 	s = strings.ReplaceAll(s, `$`, `\$`)
 	s = strings.ReplaceAll(s, "`", "\\`")
 	return s
+}
+
+// childEnvWithBumpedDepth returns the current process environment with
+// OPENCONVENE_DEPTH incremented by 1. This is injected into every spawned
+// CLI subprocess so that descendants cannot re-invoke openconvene (the
+// no-nested-dispatch guard in main.go refuses to run when depth > 0).
+func childEnvWithBumpedDepth() []string {
+	current := 0
+	if v := os.Getenv(DepthEnvVar); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			current = n
+		}
+	}
+	childDepth := current + 1
+
+	env := os.Environ()
+	found := false
+	prefixed := DepthEnvVar + "="
+	for i, e := range env {
+		if strings.HasPrefix(e, prefixed) {
+			env[i] = prefixed + strconv.Itoa(childDepth)
+			found = true
+			break
+		}
+	}
+	if !found {
+		env = append(env, prefixed+strconv.Itoa(childDepth))
+	}
+	return env
+}
+
+// CurrentDispatchDepth returns the current OPENCONVENE_DEPTH value (0 at the
+// top-level openconvene process, >= 1 inside a spawned CLI's child that
+// re-invokes openconvene).
+func CurrentDispatchDepth() int {
+	if v := os.Getenv(DepthEnvVar); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return 0
 }
